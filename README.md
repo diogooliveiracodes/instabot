@@ -2,9 +2,9 @@
 Este protótipo tem a finalidade de aumentar a quantidade de seguidores de um determinado perfil do instagram de forma automatizada e deixar de seguir perfis que não te seguem.
 
 ## Utilização
-Antes de iniciar o script é necessário preencher as variáveis:
-1. self.user_login - login do usuario que quer ganhar seguidores.
-2. self.user_password - senha do usuario que quer ganhar seguidores.
+Antes de iniciar o script é necessário preencher as variáveis: <br>
+self.user_login - login do usuario que quer ganhar seguidores. <br>
+self.user_password - senha do usuario que quer ganhar seguidores.
 
 ## Funcionalidades
 1. Seguir seguidores de perfis de troca de seguidores para que eles te sigam de volta.
