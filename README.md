@@ -7,8 +7,8 @@ Antes de iniciar o script é necessário preencher as variáveis:
 2. self.user_password - senha do usuario que quer ganhar seguidores.
 
 ## Funcionalidades
-1 - Seguir seguidores de perfis de troca de seguidores para que eles te sigam de volta.
-2 - Deixar de seguir perfis que não te seguem.
+1. Seguir seguidores de perfis de troca de seguidores para que eles te sigam de volta.
+2. Deixar de seguir perfis que não te seguem.
 
 ## Requerimentos
 Python3 - Download: https://www.python.org/downloads/
