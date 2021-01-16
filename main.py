@@ -48,12 +48,12 @@ class InstaBot():
         self.driver = webdriver.Chrome(PATH)
         self.driver.get("https://instagram.com") # abre a página
         self.profile_list = ['_follow_for_follow_for_follow_', 'follow_follow_back___', 'followforfollow2k.20', 'follow.4.follow_3', 'follow.for.follow_097'] # lista de usuarios do instagram para seguir os seguidores
-        self.user_login = "PREENCHA_SEU_USUARIO_DO_INSTAGRAM" #usuario do instagram
-        self.user_password = "PREENCHA_SUA_SENHA_DO_INSTAGRAM" #senha do seu usuario do instagram
-        self.number_to_follow = 500 #numero de seguidores a ser seguido de cada perfil listado (este número será dividido por 2)
+        self.user_login = "SEU_PERFIL" #usuario do instagram
+        self.user_password = "SUA_SENHA" #senha do seu usuario do instagram
+        self.number_to_follow = 2500 #numero de seguidores a ser seguido de cada perfil listado (este número será dividido por 2)
         self.followers = [] #lista de seguidores
         self.following = [] #lista de perfis seguidos
-        self.unfollowers = [] #lista perfis que não seguem de volta
+        self.unfollowers = ['lista', 'de', 'não', 'seguidores'] #lista perfis que não seguem de volta
 
         try:
             self.login(); sleep(4)
@@ -309,13 +309,18 @@ class InstaBot():
                         unfollow_button.click()
                         print('\nRemovido o follow do perfil:')
                         print(f.text)
-                        print('\nNúmero de unfollowers:')
+                        print('Número de follows removidos:')
                         print(count)
+                        print('Unfollowers restantes:')
+                        self.unfollowers.remove(f.text)
+                        print(len(self.unfollowers))
                         sleep(45)
 
             self.close_followers_box()
         except:
             print('\nErro na função unfollow')
+            self.close_followers_box()
+            pass
 
     def unfollow_unfollowers(self):
         try:
@@ -324,22 +329,18 @@ class InstaBot():
             self.get_followers()
             print('\n\nNúmero de Seguidores:')
             print(len(self.followers))
-            print('\nLista de seguidores:')
-            print(self.followers);
 
             self.get_following()
             print('\n\nNúmero de Seguindo:')
             print(len(self.following))
-            print('\nLista de perfis seguidos')
-            print(self.following)
 
-            self.get_unfollowers()
-            print('\nNúmero de perfis que não seguem de volta')
-            print(len(self.unfollowers))
-            print('\nLista de usuários que não seguem de volta')
-            print(self.unfollowers)
+            unfollowers_lenght = len(self.unfollowers)
+            while unfollowers_lenght>0:
+                self.get_unfollowers()
+                print('\nNúmero de perfis que não seguem de volta')
+                print(len(self.unfollowers))
 
-            self.unfollow()
+                self.unfollow()
             
         except:
             print('\nErro na função unfollow_unfollowers')
