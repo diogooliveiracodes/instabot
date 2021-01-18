@@ -314,7 +314,7 @@ class InstaBot():
                         print('Unfollowers restantes:')
                         self.unfollowers.remove(f.text)
                         print(len(self.unfollowers))
-                        sleep(45)
+                        sleep(300)
 
             self.close_followers_box()
         except:
