@@ -3,31 +3,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 from time import sleep
-
-"""
-Este protótpipo tem a finalidade de aumentar a quantidade de seguidores
-de um determinado perfil do instagram de forma automatizada.
-
-Antes de iniciar o script é necessário preencher as variáveis:
-self.user_login - login do usuario que quer ganhar seguidores
-self.user_password - senha do usuario que quer ganhar seguidores
-self.profile_list - lista de perfis no instagram para seguir os seguidores
-
-Etapas da rotina:
-01. login() - Faz login no instagram com a conta e senha do usuário. 
-02. search_profile() - Utilizando a lista self.profile_list abre a página do perfil e o remove da lista.
-03. open_followers() - Abre a lista de seguidores.
-04. sweep_followers() - Rola a barra de rolagem da tela de seguidores até o final.
-05. follow() - Segue ordenadamente os seguidores, sempre saltando um deles sem seguir. 
-06. close_followers_box() - Fecha a caixa de seguidores.
-Finalmente a rotina recomeça com o próximo perfil da lista self.profile_list, sem repetir a Etapa 01 login().
-
-Todas as etapas tem seu tratamento de erro com mensagens específicas.
-
-Ao final de cada função e ao encerrar o script é exibida uma mensagem de sucesso.
-
-"""
 
 __author__= "Diogo Oliveira"
 __date__ = "06/01/2020"
@@ -45,18 +22,20 @@ class InstaBot():
             if self.choose!= '1' and self.choose!='2':
                 print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
 
-        self.driver = webdriver.Chrome(PATH)
+        chrome_options = Options()
+        chrome_options.add_argument("--start-maximized")  # Adicione outras opções, se necessário
+        self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.get("https://instagram.com") # abre a página
-        self.profile_list = ['_follow_for_follow_for_follow_', 'follow_follow_back___', 'followforfollow2k.20', 'follow.4.follow_3', 'follow.for.follow_097'] # lista de usuarios do instagram para seguir os seguidores
-        self.user_login = "SEU_PERFIL" #usuario do instagram
-        self.user_password = "SUA_SENHA" #senha do seu usuario do instagram
+        self.profile_list = ['capivara.dev'] # lista de usuarios do instagram para seguir os seguidores
+        self.user_login = "insta.pero.la" #usuario do instagram
+        self.user_password = "Minhasenha@@123" #senha do seu usuario do instagram
         self.number_to_follow = 2500 #numero de seguidores a ser seguido de cada perfil listado (este número será dividido por 2)
         self.followers = [] #lista de seguidores
         self.following = [] #lista de perfis seguidos
         self.unfollowers = ['lista', 'de', 'não', 'seguidores'] #lista perfis que não seguem de volta
 
         try:
-            self.login(); sleep(4)
+            self.login(); sleep(5)
             if self.choose == '1':
                 self.farm_followers()
             elif self.choose == '2':
@@ -98,7 +77,7 @@ class InstaBot():
         try:
             search = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/nav/div[2]/div/div/div[2]/div/div/span[2]'))
+                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[1]/div/div[2]/div[2]/span/div/a'))
             )
             search.click() #clica na barra de pesquisa para ativar o input de pesquisa
         except:
@@ -106,14 +85,17 @@ class InstaBot():
         try:
             opened_search = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/nav/div[2]/div/div/div[2]/input'))
+                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[2]/div/div/div[2]/div/div/div[1]/div/div/input'))
             )
             opened_search.send_keys(self.profile_list[0]) #digita na barra de pesquisa o perfil a ser pesquisado
             sleep(2)
             opened_search.send_keys(Keys.DOWN)
             sleep(2)
-            opened_search.send_keys(Keys.ENTER)
-            sleep(2)
+            searched_profile = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[2]/div/div/div[2]/div/div/div[2]/div/a[1]'))
+            )
+            searched_profile.click() 
         except:
             print('\nErro ao digitar perfil a ser pesquisado')
         self.profile_list.remove(self.profile_list[0]) #remove o perfil já pesquisado da lista self.profile_list
@@ -123,7 +105,7 @@ class InstaBot():
         try:
             followers = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/main/div/header/section/ul/li[2]/a'))
+                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[2]/div[2]/section/main/div/header/section/ul/li[2]/a'))
             )
             followers.click()
         except:
@@ -146,7 +128,7 @@ class InstaBot():
         try:
             followers_box = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//div[@class="isgrP"]'))
+                    (By.XPATH, '//div[@class="_aano"]'))
             )
             count = 0
             last_ht, ht = 0, 1
@@ -219,7 +201,8 @@ class InstaBot():
         try:
             profile_image = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/nav/div[2]/div/div/div[3]/div/div[5]/span/img'))
+                    
+                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div/div/div[2]/div[8]/div/span/div/a/div/div[1]/div/div/span/img'))
             )
             profile_image.click()
         except:
@@ -272,11 +255,12 @@ class InstaBot():
     def farm_followers(self):
         print('\nComeçando a função farm_followers')
         try:
-            self.open_self_profile(); sleep(2)
+            # self.open_self_profile(); sleep(2)
             for i in self.profile_list:
-                self.search_profile(); sleep(2)
-                self.open_followers(); sleep(2)
-                self.sweep_followers(); sleep(2)
+                self.close_popup(); sleep(2)
+                self.search_profile(); sleep(5)
+                self.open_followers(); sleep(10)
+                self.sweep_followers(); sleep(5)
                 self.follow(); sleep(2)
                 self.close_followers_box(); sleep(2)
         except:
@@ -345,4 +329,14 @@ class InstaBot():
         except:
             print('\nErro na função unfollow_unfollowers')
 
+    def close_popup(self):
+        try:
+            close_button = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, '/html/body/div[3]/div[1]/div/div[2]/div/div/div/div/div[2]/div/div/div[3]/button[2]'))
+            )
+            close_button.click()
+        except Exception:
+            pass
+        print('\nLISTA FECHADA COM SUCESSO')
 InstaBot()
