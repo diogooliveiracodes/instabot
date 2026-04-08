@@ -156,78 +156,80 @@ class InstaBot():
             print('\nErro ao abrir lista de perfis seguidos')
         print('\nABERTURA DE LISTA DE PERFIS SEGUIDOS REALIZADA COM SUCESSO')
 
-    def _find_dialog_scroll_container(self):
-        """Encontra o container scrollável dentro do dialog de seguidores/seguindo via JS."""
+    def _scroll_dialog_and_count(self):
+        """Rola o container do dialog até o final e retorna a qtd de links de perfil carregados."""
         return self.driver.execute_script("""
             const dialog = document.querySelector('div[role="dialog"]');
-            if (!dialog) return null;
+            if (!dialog) return 0;
             const divs = dialog.querySelectorAll('div');
-            let best = null;
-            let bestHeight = 0;
             for (const div of divs) {
                 const style = window.getComputedStyle(div);
-                const overflowY = style.overflowY;
-                const isScrollable = (overflowY === 'auto' || overflowY === 'scroll'
-                    || overflowY === 'hidden');
-                if (isScrollable && div.scrollHeight > div.clientHeight
-                    && div.clientHeight > bestHeight && div.clientHeight > 50) {
-                    best = div;
-                    bestHeight = div.clientHeight;
+                const ov = style.overflowY;
+                if ((ov === 'auto' || ov === 'scroll' || ov === 'hidden')
+                    && div.scrollHeight > div.clientHeight && div.clientHeight > 50) {
+                    div.scrollTo(0, div.scrollHeight);
+                    break;
                 }
             }
-            if (best) return best;
-            for (const div of divs) {
-                const style = window.getComputedStyle(div);
-                if ((style.overflowY === 'auto' || style.overflowY === 'scroll')
-                    && div.clientHeight > 50) {
-                    return div;
+            const links = dialog.querySelectorAll('a[href]');
+            let count = 0;
+            const seen = new Set();
+            for (const a of links) {
+                const href = a.getAttribute('href');
+                if (href && href.startsWith('/') && href !== '/'
+                    && !href.startsWith('/explore') && !href.startsWith('/accounts')
+                    && !seen.has(href)) {
+                    seen.add(href);
+                    count++;
                 }
             }
-            return null;
+            return count;
         """)
 
     def sweep_followers(self):
         try:
             sleep(2)
-            followers_box = self._find_dialog_scroll_container()
-            if not followers_box:
-                print('\nNão foi possível encontrar o container de scroll')
-                return
-            count = 0
-            last_ht, ht = 0, 1
-            while last_ht != ht:
-                last_ht = ht
-                sleep(1)
-                ht = self.driver.execute_script("""
-                    arguments[0].scrollTo(0, arguments[0].scrollHeight);
-                    return arguments[0].scrollHeight;
-                    """, followers_box)
-                count += 1
-                if count == 500:
-                    print(count)
+            stable_checks = 0
+            last_count = 0
+            iterations = 0
+            while stable_checks < 3:
+                count = self._scroll_dialog_and_count()
+                sleep(2)
+                if count == last_count:
+                    stable_checks += 1
+                else:
+                    stable_checks = 0
+                last_count = count
+                iterations += 1
+                if iterations % 10 == 0:
+                    print(f'  Scroll: {count} perfis carregados...')
+                if iterations >= 500:
+                    print(f'  Limite de iterações atingido ({count} perfis)')
                     break
         except:
             print('\nErro na função sweep_followers')
-        print('\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO')
+        print(f'\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO ({last_count} perfis)')
 
     def sweep_all_followers(self):
         try:
             sleep(2)
-            followers_box = self._find_dialog_scroll_container()
-            if not followers_box:
-                print('\nNão foi possível encontrar o container de scroll')
-                return
-            last_ht, ht = 0, 1
-            while last_ht != ht:
-                last_ht = ht
-                sleep(1)
-                ht = self.driver.execute_script("""
-                    arguments[0].scrollTo(0, arguments[0].scrollHeight);
-                    return arguments[0].scrollHeight;
-                    """, followers_box)
+            stable_checks = 0
+            last_count = 0
+            iterations = 0
+            while stable_checks < 3:
+                count = self._scroll_dialog_and_count()
+                sleep(2)
+                if count == last_count:
+                    stable_checks += 1
+                else:
+                    stable_checks = 0
+                last_count = count
+                iterations += 1
+                if iterations % 10 == 0:
+                    print(f'  Scroll: {count} perfis carregados...')
         except:
             print('\nErro na função sweep_all_followers')
-        print('\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO')
+        print(f'\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO ({last_count} perfis)')
 
     def follow(self):
         try:
