@@ -4,38 +4,40 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from datetime import datetime
 from time import sleep
 
-__author__= "Diogo Oliveira"
+__author__ = "Diogo Oliveira"
 __date__ = "06/01/2020"
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
-PATH = "C:\Program Files (x86)\chromedriver.exe" # pega o path do executável do chrome driver
 
 class InstaBot():
     def __init__(self):
 
         self.choose = '0'
         print('\n\nQual função deseja utilizar?\n[ 1 ] - Ganhar seguidores\n[ 2 ] - Deixar de seguir quem não te segue')
-        while self.choose!= '1' and self.choose!='2':
+        while self.choose != '1' and self.choose != '2':
             self.choose = input('\nDigite sua escolha [ 1 ou 2 ] :')
-            if self.choose!= '1' and self.choose!='2':
+            if self.choose != '1' and self.choose != '2':
                 print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
 
         chrome_options = Options()
-        chrome_options.add_argument("--start-maximized")  # Adicione outras opções, se necessário
+        chrome_options.add_argument("--start-maximized")
         self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver.get("https://instagram.com") # abre a página
-        self.profile_list = ['capivara.dev'] # lista de usuarios do instagram para seguir os seguidores
-        self.user_login = "insta.pero.la" #usuario do instagram
-        self.user_password = "Minhasenha@@123" #senha do seu usuario do instagram
-        self.number_to_follow = 2500 #numero de seguidores a ser seguido de cada perfil listado (este número será dividido por 2)
-        self.followers = [] #lista de seguidores
-        self.following = [] #lista de perfis seguidos
-        self.unfollowers = ['lista', 'de', 'não', 'seguidores'] #lista perfis que não seguem de volta
+        self.driver.get("https://instagram.com")
+        self.profile_list = ['capivara.dev']
+        self.user_login = ""
+        self.user_password = ""
+        self.number_to_follow = 2500
+        self.followers = []
+        self.following = []
+        self.unfollowers = ['lista', 'de', 'não', 'seguidores']
 
         try:
-            self.login(); sleep(5)
+            self.do_login()
+            sleep(5)
+            self.dismiss_popups()
             if self.choose == '1':
                 self.farm_followers()
             elif self.choose == '2':
@@ -44,70 +46,100 @@ class InstaBot():
         except:
             print('\nErro na função Iniciar')
         print('\nFim do Script')
-    
-    def login(self):
+
+    def do_login(self):
         try:
-            self.login = WebDriverWait(self.driver, 10).until(
+            login_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="loginForm"]/div/div[1]/div/label/input'))
+                    (By.CSS_SELECTOR, 'input[name="email"]'))
             )
-            self.login.send_keys(self.user_login) #preenche usuario
+            login_input.send_keys(self.user_login)
         except:
             print('\nErro ao preencher o login')
         try:
-            self.senha = WebDriverWait(self.driver, 10).until(
+            password_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="loginForm"]/div/div[2]/div/label/input'))
+                    (By.CSS_SELECTOR, 'input[name="pass"]'))
             )
-            self.senha.send_keys(self.user_password) #Preenche senha
+            password_input.send_keys(self.user_password)
             sleep(1)
         except:
             print('\nErro ao preencher a senha')
         try:
-            self.entrar = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="loginForm"]/div/div[3]/button'))
-            )
-            self.entrar.click() #Clica no botão entrar
+            login_button = self.driver.find_element(By.CSS_SELECTOR, 'form button')
+            login_button.click()
         except:
-            print('\nErro ao clicar no botão Entrar')
+            try:
+                password_input.send_keys(Keys.RETURN)
+            except:
+                print('\nErro ao clicar no botão Entrar')
         print('\nLOGIN REALIZADO COM SUCESSO')
+
+    def dismiss_popups(self):
+        for _ in range(2):
+            try:
+                not_now = WebDriverWait(self.driver, 8).until(
+                    EC.element_to_be_clickable(
+                        (By.XPATH,
+                         '//button[text()="Not Now" or text()="Not now" '
+                         'or text()="Agora não" or text()="Ahora no"]'))
+                )
+                not_now.click()
+                sleep(3)
+            except:
+                try:
+                    self.driver.execute_script("""
+                        const btns = document.querySelectorAll('button');
+                        for (const b of btns) {
+                            const t = b.textContent.trim().toLowerCase();
+                            if (t === 'not now' || t === 'agora não') {
+                                b.click(); return;
+                            }
+                        }
+                    """)
+                    sleep(3)
+                except:
+                    pass
 
     def search_profile(self):
         try:
             search = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[1]/div/div[2]/div[2]/span/div/a'))
+                EC.element_to_be_clickable(
+                    (By.XPATH,
+                     '//a[.//span[text()="Search"] or .//span[text()="Pesquisar"]]'))
             )
-            search.click() #clica na barra de pesquisa para ativar o input de pesquisa
+            search.click()
+            sleep(1)
         except:
             print('\nErro ao clicar na barra de pesquisa')
         try:
-            opened_search = WebDriverWait(self.driver, 10).until(
+            profile_name = self.profile_list[0]
+            search_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[2]/div/div/div[2]/div/div/div[1]/div/div/input'))
+                    (By.CSS_SELECTOR,
+                     'input[placeholder="Search"], input[placeholder="Pesquisar"]'))
             )
-            opened_search.send_keys(self.profile_list[0]) #digita na barra de pesquisa o perfil a ser pesquisado
-            sleep(2)
-            opened_search.send_keys(Keys.DOWN)
-            sleep(2)
+            search_input.clear()
+            search_input.send_keys(profile_name)
+            sleep(3)
             searched_profile = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div[2]/div/div/div[2]/div/div/div[2]/div/a[1]'))
+                EC.element_to_be_clickable(
+                    (By.XPATH, f'//a[contains(@href, "/{profile_name}/")]'))
             )
-            searched_profile.click() 
+            searched_profile.click()
         except:
             print('\nErro ao digitar perfil a ser pesquisado')
-        self.profile_list.remove(self.profile_list[0]) #remove o perfil já pesquisado da lista self.profile_list
+        self.profile_list.remove(self.profile_list[0])
         print('\nPESQUISA DE PERFIL REALIZADA COM SUCESSO')
 
     def open_followers(self):
         try:
             followers = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[2]/div[2]/section/main/div/header/section/ul/li[2]/a'))
+                EC.element_to_be_clickable(
+                    (By.XPATH, '//a[contains(@href, "/followers/")]'))
             )
             followers.click()
+            sleep(2)
         except:
             print('\nErro ao abrir seguidores')
         print('\nABERTURA DOS SEGUIDORES REALIZADA COM SUCESSO')
@@ -115,21 +147,52 @@ class InstaBot():
     def open_following(self):
         try:
             following = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/main/div/header/section/ul/li[3]/a'))
+                EC.element_to_be_clickable(
+                    (By.XPATH, '//a[contains(@href, "/following/")]'))
             )
             following.click()
+            sleep(2)
         except:
             print('\nErro ao abrir lista de perfis seguidos')
         print('\nABERTURA DE LISTA DE PERFIS SEGUIDOS REALIZADA COM SUCESSO')
 
+    def _find_dialog_scroll_container(self):
+        """Encontra o container scrollável dentro do dialog de seguidores/seguindo via JS."""
+        return self.driver.execute_script("""
+            const dialog = document.querySelector('div[role="dialog"]');
+            if (!dialog) return null;
+            const divs = dialog.querySelectorAll('div');
+            let best = null;
+            let bestHeight = 0;
+            for (const div of divs) {
+                const style = window.getComputedStyle(div);
+                const overflowY = style.overflowY;
+                const isScrollable = (overflowY === 'auto' || overflowY === 'scroll'
+                    || overflowY === 'hidden');
+                if (isScrollable && div.scrollHeight > div.clientHeight
+                    && div.clientHeight > bestHeight && div.clientHeight > 50) {
+                    best = div;
+                    bestHeight = div.clientHeight;
+                }
+            }
+            if (best) return best;
+            for (const div of divs) {
+                const style = window.getComputedStyle(div);
+                if ((style.overflowY === 'auto' || style.overflowY === 'scroll')
+                    && div.clientHeight > 50) {
+                    return div;
+                }
+            }
+            return null;
+        """)
+
     def sweep_followers(self):
-        
         try:
-            followers_box = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//div[@class="_aano"]'))
-            )
+            sleep(2)
+            followers_box = self._find_dialog_scroll_container()
+            if not followers_box:
+                print('\nNão foi possível encontrar o container de scroll')
+                return
             count = 0
             last_ht, ht = 0, 1
             while last_ht != ht:
@@ -139,23 +202,21 @@ class InstaBot():
                     arguments[0].scrollTo(0, arguments[0].scrollHeight);
                     return arguments[0].scrollHeight;
                     """, followers_box)
-                count+=1
+                count += 1
                 if count == 500:
                     print(count)
                     break
-                else:
-                    pass
         except:
             print('\nErro na função sweep_followers')
         print('\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO')
 
     def sweep_all_followers(self):
-            
         try:
-            followers_box = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//div[@class="isgrP"]'))
-            )
+            sleep(2)
+            followers_box = self._find_dialog_scroll_container()
+            if not followers_box:
+                print('\nNão foi possível encontrar o container de scroll')
+                return
             last_ht, ht = 0, 1
             while last_ht != ht:
                 last_ht = ht
@@ -168,84 +229,126 @@ class InstaBot():
             print('\nErro na função sweep_all_followers')
         print('\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO')
 
-    def follow(self): 
+    def follow(self):
         try:
-            for i in range(1, self.number_to_follow): #numero de seguidores a seguir de cada perfil da lista self.profile_list
-                if (i%2==0):
-                    try:
-                        followers = WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, '/html/body/div[5]/div/div/div[2]/ul/div/li['+i.__str__()+']/div/div[2]/button'))
-                        )
-                        if followers.text == 'Seguir':
-                            followers.click()
-                            sleep(300)
-                    except Exception:
-                        pass
+            follow_buttons = self.driver.find_elements(
+                By.XPATH, '//div[@role="dialog"]//button'
+            )
+            count = 0
+            for btn in follow_buttons:
+                if count >= self.number_to_follow // 2:
+                    break
+                try:
+                    btn_text = btn.text.strip()
+                    if btn_text in ['Follow', 'Seguir']:
+                        btn.click()
+                        count += 1
+                        sleep(300)
+                except:
+                    pass
         except:
             print('\nErro na função follow')
         print('\nPERFIS SEGUIDOS COM SUCESSO')
 
     def close_followers_box(self):
+        closed = False
         try:
-            close_button = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[5]/div/div/div[1]/div/div[2]/button'))
-            )
-            close_button.click()
-        except Exception:
+            closed = self.driver.execute_script("""
+                const dialog = document.querySelector('div[role="dialog"]');
+                if (!dialog) return false;
+                const svg = dialog.querySelector('svg[aria-label="Close"]');
+                if (svg) {
+                    const btn = svg.closest('button') || svg.parentElement;
+                    if (btn) { btn.click(); return true; }
+                }
+                return false;
+            """)
+        except:
             pass
+        if not closed:
+            try:
+                self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+            except:
+                pass
+        sleep(2)
+        try:
+            WebDriverWait(self.driver, 5).until(
+                lambda d: '/followers' not in d.current_url and '/following' not in d.current_url
+            )
+        except:
+            try:
+                current = self.driver.current_url
+                if '/followers' in current or '/following' in current:
+                    base = current.split('/followers')[0].split('/following')[0] + '/'
+                    self.driver.get(base)
+                    sleep(2)
+            except:
+                pass
         print('\nLISTA FECHADA COM SUCESSO')
 
     def open_self_profile(self):
         try:
-            profile_image = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    
-                    (By.XPATH, '/html/body/div[2]/div/div/div[2]/div/div/div[1]/div[1]/div[1]/div/div/div/div/div[2]/div[8]/div/span/div/a/div/div[1]/div/div/span/img'))
-            )
-            profile_image.click()
+            profile_url = self.driver.execute_script("""
+                const svg = document.querySelector('svg[aria-label="Profile"]');
+                if (svg) {
+                    const link = svg.closest('a');
+                    if (link) return link.href;
+                }
+                const links = document.querySelectorAll('nav a[href]');
+                for (const a of links) {
+                    const spans = a.querySelectorAll('span');
+                    for (const s of spans) {
+                        if (s.textContent === 'Profile' || s.textContent === 'Perfil') {
+                            return a.href;
+                        }
+                    }
+                }
+                return null;
+            """)
+            if profile_url:
+                self.driver.get(profile_url)
+            else:
+                profile_link = self.driver.find_element(
+                    By.XPATH, '//a[.//span[text()="Profile"] or .//span[text()="Perfil"]]'
+                )
+                profile_link.click()
         except:
             print('\nNão foi possível abrir o próprio perfil')
-
-        try:
-            profile = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="react-root"]/section/nav/div[2]/div/div/div[3]/div/div[5]/div[2]/div[2]/div[2]/a[1]/div'))
-            )
-            profile.click()
-        except:
-            print('\nNão foi possível clicar no link do perfil')
+        sleep(2)
         print('\nPERFIL ABERTO COM SUCESSO')
+
+    def _get_usernames_from_dialog(self):
+        """Extrai usernames das URLs dos links dentro do dialog de seguidores/seguindo."""
+        usernames = []
+        try:
+            dialog = self.driver.find_element(By.CSS_SELECTOR, 'div[role="dialog"]')
+            links = dialog.find_elements(By.TAG_NAME, 'a')
+            seen = set()
+            excluded = {'', '#', 'explore', 'accounts', 'p', 'reel', 'stories', 'reels'}
+            for link in links:
+                href = link.get_attribute('href')
+                if href:
+                    username = href.rstrip('/').split('/')[-1]
+                    if username and username not in seen and username not in excluded:
+                        seen.add(username)
+                        usernames.append(username)
+        except:
+            pass
+        return usernames
 
     def get_followers(self):
         self.open_followers()
+        sleep(2)
         self.sweep_all_followers()
-        try:
-            followers_list_html = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[5]/div/div/div[2]/ul/div'))
-            )      
-            links = followers_list_html.find_elements_by_tag_name('a')
-            self.followers = [name.text for name in links if name.text != '']
-        except:
-            print('\nErro ao capturar seguidores')
+        self.followers = self._get_usernames_from_dialog()
         self.close_followers_box()
-        
         print('\nFunção get_followers executada com sucesso!')
 
     def get_following(self):
         self.open_following()
+        sleep(2)
         self.sweep_all_followers()
-        try:
-            following_list_html = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[5]/div/div/div[2]/ul/div'))
-            )
-            links = following_list_html.find_elements_by_tag_name('a')
-            self.following = [name.text for name in links if name.text != '']
-        except:
-            print('\nErro ao capturar lista de perfis seguidos')
+        self.following = self._get_usernames_from_dialog()
         self.close_followers_box()
         print('\nFunção get_following executada com sucesso!')
 
@@ -255,88 +358,129 @@ class InstaBot():
     def farm_followers(self):
         print('\nComeçando a função farm_followers')
         try:
-            # self.open_self_profile(); sleep(2)
-            for i in self.profile_list:
-                self.close_popup(); sleep(2)
-                self.search_profile(); sleep(5)
-                self.open_followers(); sleep(10)
-                self.sweep_followers(); sleep(5)
-                self.follow(); sleep(2)
-                self.close_followers_box(); sleep(2)
+            for profile in self.profile_list[:]:
+                self.search_profile()
+                sleep(5)
+                self.open_followers()
+                sleep(10)
+                self.sweep_followers()
+                sleep(5)
+                self.follow()
+                sleep(2)
+                self.close_followers_box()
+                sleep(2)
         except:
             print('\nErro na função farm_followers')
-        
+
     def unfollow(self):
-        self.open_self_profile(); sleep(2)
-        self.open_following(); sleep(2)
-        self.sweep_all_followers(); sleep(2)
+        self.open_following()
+        sleep(2)
+        self.sweep_all_followers()
+        sleep(2)
         try:
-            following_list_html = WebDriverWait(self.driver, 10).until(
+            dialog = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[5]/div/div/div[2]/ul/div'))
-            )      
-            list_html = following_list_html.find_elements_by_tag_name('li')
+                    (By.CSS_SELECTOR, 'div[role="dialog"]'))
+            )
+            buttons = dialog.find_elements(By.TAG_NAME, 'button')
             count = 0
 
-            for l in list_html:
-                following_profile = l.find_elements_by_tag_name('a')
-                following_button = l.find_element_by_tag_name('button')
-                for f in following_profile:
-                    if f.text in self.unfollowers:
-                        following_button.click()
-                        count+=1
-                        unfollow_button = WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, '/html/body/div[6]/div/div/div/div[3]/button[1]'))
-                        )
-                        sleep(2)
-                        unfollow_button.click()
-                        print('\nRemovido o follow do perfil:')
-                        print(f.text)
-                        print('Número de follows removidos:')
-                        print(count)
-                        print('Unfollowers restantes:')
-                        self.unfollowers.remove(f.text)
-                        print(len(self.unfollowers))
-                        sleep(300)
+            for btn in buttons:
+                if btn.text.strip() in ['Following', 'Seguindo']:
+                    parent = btn.find_element(By.XPATH, './ancestor::div[.//a[contains(@href, "/")]]')
+                    links = parent.find_elements(By.TAG_NAME, 'a')
+                    for link in links:
+                        href = link.get_attribute('href')
+                        if href:
+                            username = href.rstrip('/').split('/')[-1]
+                            if username in self.unfollowers:
+                                btn.click()
+                                sleep(1)
+                                unfollow_button = WebDriverWait(self.driver, 10).until(
+                                    EC.element_to_be_clickable(
+                                        (By.XPATH,
+                                         '//button[text()="Unfollow" or text()="Deixar de seguir"]'))
+                                )
+                                sleep(1)
+                                unfollow_button.click()
+                                count += 1
+                                self._append_removed(username)
+                                print(f'\nRemovido o follow do perfil: {username}')
+                                print(f'Número de follows removidos: {count}')
+                                self.unfollowers.remove(username)
+                                print(f'Unfollowers restantes: {len(self.unfollowers)}')
+                                sleep(300)
+                                break
 
             self.close_followers_box()
         except:
             print('\nErro na função unfollow')
             self.close_followers_box()
-            pass
+
+    def _save_unfollowers_list(self):
+        filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.txt'
+        with open(filename, 'w', encoding='utf-8') as f:
+            for user in self.unfollowers:
+                f.write(user + '\n')
+        print(f'\nLista de não-seguidores salva em: {filename}')
+        return filename
+
+    def _append_removed(self, username):
+        with open('removidos.txt', 'a', encoding='utf-8') as f:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f'{username} - {timestamp}\n')
 
     def unfollow_unfollowers(self):
         try:
-            self.open_self_profile(); sleep(2)
+            self.open_self_profile()
+            sleep(2)
 
             self.get_followers()
-            print('\n\nNúmero de Seguidores:')
-            print(len(self.followers))
+            print(f'\n\nNúmero de Seguidores: {len(self.followers)}')
 
             self.get_following()
-            print('\n\nNúmero de Seguindo:')
-            print(len(self.following))
+            print(f'\n\nNúmero de Seguindo: {len(self.following)}')
 
-            unfollowers_lenght = len(self.unfollowers)
-            while unfollowers_lenght>0:
-                self.get_unfollowers()
-                print('\nNúmero de perfis que não seguem de volta')
-                print(len(self.unfollowers))
+            self.get_unfollowers()
+            print(f'\nNúmero de perfis que não seguem de volta: {len(self.unfollowers)}')
 
+            self._save_unfollowers_list()
+
+            while len(self.unfollowers) > 0:
                 self.unfollow()
-            
+                sleep(2)
+                self.open_self_profile()
+                sleep(2)
+                self.get_followers()
+                self.get_following()
+                self.get_unfollowers()
+                print(f'\nUnfollowers restantes: {len(self.unfollowers)}')
+
         except:
             print('\nErro na função unfollow_unfollowers')
 
     def close_popup(self):
         try:
-            close_button = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/div[3]/div[1]/div/div[2]/div/div/div/div/div[2]/div/div/div[3]/button[2]'))
+            not_now = WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH,
+                     '//button[text()="Not Now" or text()="Not now" '
+                     'or text()="Agora não" or text()="Ahora no"]'))
             )
-            close_button.click()
-        except Exception:
-            pass
-        print('\nLISTA FECHADA COM SUCESSO')
+            not_now.click()
+        except:
+            try:
+                self.driver.execute_script("""
+                    const btns = document.querySelectorAll('button');
+                    for (const b of btns) {
+                        const t = b.textContent.trim().toLowerCase();
+                        if (t === 'not now' || t === 'agora não') {
+                            b.click(); return;
+                        }
+                    }
+                """)
+            except:
+                pass
+        print('\nPOPUP FECHADO COM SUCESSO')
+
 InstaBot()
