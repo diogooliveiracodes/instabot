@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 from time import sleep
+import os
 
 __author__ = "Diogo Oliveira"
 __date__ = "06/01/2020"
@@ -472,16 +473,23 @@ class InstaBot():
             print('\nErro na função unfollow')
             self.close_followers_box()
 
+    def _get_logs_dir(self):
+        logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        return logs_dir
+
     def _save_unfollowers_list(self):
         filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.txt'
-        with open(filename, 'w', encoding='utf-8') as f:
+        filepath = os.path.join(self._get_logs_dir(), filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
             for user in self.unfollowers:
                 f.write(user + '\n')
-        print(f'\nLista de não-seguidores salva em: {filename}')
-        return filename
+        print(f'\nLista de não-seguidores salva em: {filepath}')
+        return filepath
 
     def _append_removed(self, username):
-        with open('removidos.txt', 'a', encoding='utf-8') as f:
+        filepath = os.path.join(self._get_logs_dir(), 'removidos.txt')
+        with open(filepath, 'a', encoding='utf-8') as f:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write(f'{username} - {timestamp}\n')
 
