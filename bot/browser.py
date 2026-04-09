@@ -11,6 +11,14 @@ class BrowserManager:
     def __init__(self):
         self.driver = None
 
+    def quit(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+
     def setup(self, url):
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")

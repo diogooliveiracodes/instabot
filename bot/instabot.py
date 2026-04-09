@@ -1,42 +1,60 @@
 import config
+import threading
 from time import sleep
 from bot.browser import BrowserManager
 from bot.navigation import Navigator
 from bot.scraper import Scraper
 from bot.actions import ActionHandler
 from bot.file_manager import FileManager
+from bot.exceptions import BotStoppedException
 
 
 class InstaBot:
-    def __init__(self):
+    def __init__(self, stop_event=None):
+        self._stop_event = stop_event or threading.Event()
         self.browser = BrowserManager()
         self.driver = self.browser.setup(config.INSTAGRAM_URL)
         self.nav = Navigator(self.driver)
-        self.scraper = Scraper(self.driver)
-        self.actions = ActionHandler(self.driver)
+        self.scraper = Scraper(self.driver, self._stop_event)
+        self.actions = ActionHandler(self.driver, self._stop_event)
         self.files = FileManager()
         self.followers = []
         self.following = []
         self.unfollowers = []
 
+    def _check(self):
+        if self._stop_event.is_set():
+            raise BotStoppedException()
+
+    def _sleep(self, seconds):
+        """Sleep interruptível pelo stop_event."""
+        if self._stop_event.wait(seconds):
+            raise BotStoppedException()
+
+    def quit(self):
+        self.browser.quit()
+
     def start(self):
         self.browser.login(config.USER_LOGIN, config.USER_PASSWORD)
-        sleep(5)
+        self._sleep(5)
+        self._check()
         self.browser.dismiss_popups()
 
     # ── Coleta de dados ──────────────────────────────────────────────
 
     def get_followers(self):
+        self._check()
         self.nav.open_followers()
-        sleep(2)
+        self._sleep(2)
         self.scraper.sweep()
         self.followers = self.scraper.get_usernames()
         self.nav.close_dialog()
         print('\nFunção get_followers executada com sucesso!')
 
     def get_following(self):
+        self._check()
         self.nav.open_following()
-        sleep(2)
+        self._sleep(2)
         self.scraper.sweep(only_following=True)
         self.following = self.scraper.get_usernames(only_following=True)
         self.nav.close_dialog()
@@ -51,16 +69,19 @@ class InstaBot:
         print('\nComeçando a função farm_followers')
         try:
             for profile_name in config.PROFILE_LIST[:]:
+                self._check()
                 self.nav.search_profile(profile_name)
-                sleep(5)
+                self._sleep(5)
                 self.nav.open_followers()
-                sleep(10)
+                self._sleep(10)
                 self.scraper.sweep(max_iterations=500)
-                sleep(5)
+                self._sleep(5)
                 self.actions.follow_users(config.NUMBER_TO_FOLLOW // 2)
-                sleep(2)
+                self._sleep(2)
                 self.nav.close_dialog()
-                sleep(2)
+                self._sleep(2)
+        except BotStoppedException:
+            raise
         except Exception:
             print('\nErro na função farm_followers')
 
@@ -69,7 +90,7 @@ class InstaBot:
     def list_unfollowers(self):
         try:
             self.nav.open_self_profile()
-            sleep(2)
+            self._sleep(2)
 
             self.get_followers()
             print(f'\n\nNúmero de Seguidores: {len(self.followers)}')
@@ -82,6 +103,8 @@ class InstaBot:
 
             self.files.save_unfollowers(self.unfollowers)
             print('\nListagem concluída com sucesso!')
+        except BotStoppedException:
+            raise
         except Exception:
             print('\nErro na função list_unfollowers')
 
@@ -97,23 +120,29 @@ class InstaBot:
             print(f'\nIniciando remoção de {len(self.unfollowers)} não-seguidores...')
 
             self.nav.open_self_profile()
-            sleep(2)
+            self._sleep(2)
             self.nav.open_following()
-            sleep(2)
+            self._sleep(2)
             self.scraper.sweep(only_following=True)
-            sleep(2)
+            self._sleep(2)
 
             while self.unfollowers:
+                self._check()
                 removed = self.actions.unfollow_from_dialog(self.unfollowers)
                 if removed:
                     self.unfollowers = self.files.process_removal(
                         removed, self.unfollowers)
                     print(f'Unfollowers restantes: {len(self.unfollowers)}')
+                    if self.unfollowers:
+                        print('Aguardando 5 minutos antes da próxima remoção...')
+                        self._sleep(300)
                 else:
                     print('\nNenhum unfollower encontrado no dialog atual.')
                     break
 
             self.nav.close_dialog()
             print('\nTodos os não-seguidores foram removidos!')
+        except BotStoppedException:
+            raise
         except Exception:
             print('\nErro na função unfollow_from_list')

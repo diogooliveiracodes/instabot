@@ -2,11 +2,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
+from bot.exceptions import BotStoppedException
 
 
 class ActionHandler:
-    def __init__(self, driver):
+    def __init__(self, driver, stop_event=None):
         self.driver = driver
+        self._stop_event = stop_event
+
+    def _wait(self, seconds):
+        """Sleep interruptível pelo stop_event."""
+        if self._stop_event:
+            if self._stop_event.wait(seconds):
+                raise BotStoppedException()
+        else:
+            sleep(seconds)
 
     def follow_users(self, max_count):
         try:
@@ -15,15 +25,22 @@ class ActionHandler:
             )
             count = 0
             for btn in buttons:
+                if self._stop_event and self._stop_event.is_set():
+                    raise BotStoppedException()
                 if count >= max_count:
                     break
                 try:
                     if btn.text.strip() in ('Follow', 'Seguir'):
                         btn.click()
                         count += 1
-                        sleep(300)
+                        print(f'  Seguido {count}/{max_count}')
+                        self._wait(300)
+                except BotStoppedException:
+                    raise
                 except Exception:
                     pass
+        except BotStoppedException:
+            raise
         except Exception:
             print('\nErro na função follow')
         print('\nPERFIS SEGUIDOS COM SUCESSO')
@@ -66,7 +83,6 @@ class ActionHandler:
                     sleep(1)
                     unfollow_btn.click()
                     print(f'\nRemovido o follow do perfil: {username}')
-                    sleep(300)
                     return username
 
         except Exception:

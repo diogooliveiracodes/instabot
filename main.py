@@ -1,8 +1,10 @@
-from bot import InstaBot
-from time import sleep
+import sys
 
 
-def show_menu():
+def cli():
+    from bot import InstaBot
+    from time import sleep
+
     choice = '0'
     sub_choice = '0'
 
@@ -23,12 +25,6 @@ def show_menu():
             if sub_choice not in ('1', '2'):
                 print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
 
-    return choice, sub_choice
-
-
-def main():
-    choice, sub_choice = show_menu()
-
     bot = InstaBot()
     try:
         bot.start()
@@ -48,4 +44,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if '--cli' in sys.argv:
+        cli()
+    else:
+        from gui import run
+        run()

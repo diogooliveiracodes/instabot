@@ -1,9 +1,11 @@
 from time import sleep
+from bot.exceptions import BotStoppedException
 
 
 class Scraper:
-    def __init__(self, driver):
+    def __init__(self, driver, stop_event=None):
         self.driver = driver
+        self._stop_event = stop_event
 
     def _scroll_and_count(self, only_following=False):
         return self.driver.execute_script("""
@@ -56,6 +58,8 @@ class Scraper:
             stable_checks = 0
             iterations = 0
             while stable_checks < 3:
+                if self._stop_event and self._stop_event.is_set():
+                    raise BotStoppedException()
                 count = self._scroll_and_count(only_following=only_following)
                 sleep(2)
                 if count == last_count:
@@ -69,6 +73,8 @@ class Scraper:
                 if max_iterations and iterations >= max_iterations:
                     print(f'  Limite de iterações atingido ({count} perfis)')
                     break
+        except BotStoppedException:
+            raise
         except Exception:
             print('\nErro na função sweep')
         print(f'\nVARREDURA REALIZADA COM SUCESSO ({last_count} perfis)')
