@@ -12,14 +12,14 @@ Este protótipo tem a finalidade de aumentar a quantidade de seguidores de um de
 * Windows
 
 ## 🤖 Instalação
-1. Clone o repositório ou baixe o arquivo `main.py`.
+1. Clone o repositório.
 2. Instale a dependência do Selenium:
    ```
    pip install selenium
    ```
-3. Abra o arquivo `main.py` e configure as variáveis:
-   - `self.user_login` — e-mail ou usuário do Instagram.
-   - `self.user_password` — senha da conta.
+3. Abra o arquivo `config.py` e configure suas credenciais:
+   - `USER_LOGIN` — e-mail ou usuário do Instagram.
+   - `USER_PASSWORD` — senha da conta.
 4. Execute o script:
    ```
    python main.py
@@ -35,7 +35,7 @@ Ao executar o script, o menu principal será exibido:
 ```
 
 ### Opção 1 — Ganhar seguidores
-O bot abre o perfil configurado em `self.profile_list`, percorre a lista de seguidores desse perfil e segue cada um deles para que sigam de volta.
+O bot abre o perfil configurado em `PROFILE_LIST` (`config.py`), percorre a lista de seguidores desse perfil e segue cada um deles para que sigam de volta.
 
 ### Opção 2 — Deixar de seguir quem não te segue
 Ao selecionar esta opção, um sub-menu é apresentado:
@@ -60,7 +60,16 @@ Se o script for interrompido, basta executar a opção 2.2 novamente — ele con
 ## 📂 Estrutura de arquivos
 ```
 instabot/
-├── main.py              # Script principal
+├── main.py                  # Ponto de entrada (menu)
+├── config.py                # Credenciais e configurações
+├── bot/
+│   ├── __init__.py
+│   ├── instabot.py          # Classe orquestradora
+│   ├── browser.py           # Setup do driver, login, popups
+│   ├── navigation.py        # Navegação (perfil, seguidores, dialog)
+│   ├── scraper.py           # Scroll e extração de usernames
+│   ├── actions.py           # Follow / unfollow
+│   └── file_manager.py      # Leitura e escrita dos arquivos .txt
 ├── logs/
 │   ├── nao-seguidores.txt   # Lista dos perfis que não seguem de volta
 │   └── removidos.txt        # Histórico de perfis removidos com timestamp
