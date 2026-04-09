@@ -156,9 +156,12 @@ class InstaBot():
             print('\nErro ao abrir lista de perfis seguidos')
         print('\nABERTURA DE LISTA DE PERFIS SEGUIDOS REALIZADA COM SUCESSO')
 
-    def _scroll_dialog_and_count(self):
-        """Rola o container do dialog até o final e retorna a qtd de links de perfil carregados."""
+    def _scroll_dialog_and_count(self, only_following=False):
+        """Rola o container do dialog até o final e retorna a qtd de perfis carregados.
+        Se only_following=True, conta apenas perfis com botão 'Following'/'Seguindo'.
+        """
         return self.driver.execute_script("""
+            const onlyFollowing = arguments[0];
             const dialog = document.querySelector('div[role="dialog"]');
             if (!dialog) return 0;
             const divs = dialog.querySelectorAll('div');
@@ -171,6 +174,19 @@ class InstaBot():
                     break;
                 }
             }
+
+            if (onlyFollowing) {
+                const buttons = dialog.querySelectorAll('button');
+                let count = 0;
+                for (const btn of buttons) {
+                    const t = btn.textContent.trim();
+                    if (t === 'Following' || t === 'Seguindo') {
+                        count++;
+                    }
+                }
+                return count;
+            }
+
             const links = dialog.querySelectorAll('a[href]');
             let count = 0;
             const seen = new Set();
@@ -184,16 +200,16 @@ class InstaBot():
                 }
             }
             return count;
-        """)
+        """, only_following)
 
-    def sweep_followers(self):
+    def sweep_followers(self, only_following=False):
         try:
             sleep(2)
             stable_checks = 0
             last_count = 0
             iterations = 0
             while stable_checks < 3:
-                count = self._scroll_dialog_and_count()
+                count = self._scroll_dialog_and_count(only_following=only_following)
                 sleep(2)
                 if count == last_count:
                     stable_checks += 1
@@ -210,14 +226,14 @@ class InstaBot():
             print('\nErro na função sweep_followers')
         print(f'\nVARREDURA DE SEGUIDORES REALIZADA COM SUCESSO ({last_count} perfis)')
 
-    def sweep_all_followers(self):
+    def sweep_all_followers(self, only_following=False):
         try:
             sleep(2)
             stable_checks = 0
             last_count = 0
             iterations = 0
             while stable_checks < 3:
-                count = self._scroll_dialog_and_count()
+                count = self._scroll_dialog_and_count(only_following=only_following)
                 sleep(2)
                 if count == last_count:
                     stable_checks += 1
@@ -319,24 +335,61 @@ class InstaBot():
         sleep(2)
         print('\nPERFIL ABERTO COM SUCESSO')
 
-    def _get_usernames_from_dialog(self):
-        """Extrai usernames das URLs dos links dentro do dialog de seguidores/seguindo."""
-        usernames = []
+    def _get_usernames_from_dialog(self, only_following=False):
+        """Extrai usernames dos links dentro do dialog.
+        Se only_following=True, retorna apenas perfis com botão 'Following'/'Seguindo',
+        ignorando sugestões (botão 'Follow'/'Seguir').
+        """
         try:
-            dialog = self.driver.find_element(By.CSS_SELECTOR, 'div[role="dialog"]')
-            links = dialog.find_elements(By.TAG_NAME, 'a')
-            seen = set()
-            excluded = {'', '#', 'explore', 'accounts', 'p', 'reel', 'stories', 'reels'}
-            for link in links:
-                href = link.get_attribute('href')
-                if href:
-                    username = href.rstrip('/').split('/')[-1]
-                    if username and username not in seen and username not in excluded:
-                        seen.add(username)
-                        usernames.append(username)
+            return self.driver.execute_script("""
+                const onlyFollowing = arguments[0];
+                const dialog = document.querySelector('div[role="dialog"]');
+                if (!dialog) return [];
+
+                const excluded = new Set(['', '#', 'explore', 'accounts', 'p', 'reel', 'stories', 'reels']);
+                const seen = new Set();
+                const usernames = [];
+
+                const items = dialog.querySelectorAll('div[role="dialog"] li, div[role="dialog"] > div > div > div > div > div');
+
+                if (onlyFollowing) {
+                    const buttons = dialog.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const btnText = btn.textContent.trim();
+                        if (btnText === 'Following' || btnText === 'Seguindo') {
+                            const container = btn.closest('li') || btn.closest('div[style]') || btn.parentElement?.parentElement?.parentElement;
+                            if (!container) continue;
+                            const links = container.querySelectorAll('a[href]');
+                            for (const a of links) {
+                                const href = a.getAttribute('href');
+                                if (!href) continue;
+                                const parts = href.replace(/\\/+$/, '').split('/');
+                                const username = parts[parts.length - 1];
+                                if (username && !seen.has(username) && !excluded.has(username)) {
+                                    seen.add(username);
+                                    usernames.push(username);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    const links = dialog.querySelectorAll('a[href]');
+                    for (const a of links) {
+                        const href = a.getAttribute('href');
+                        if (!href) continue;
+                        const parts = href.replace(/\\/+$/, '').split('/');
+                        const username = parts[parts.length - 1];
+                        if (username && !seen.has(username) && !excluded.has(username)) {
+                            seen.add(username);
+                            usernames.push(username);
+                        }
+                    }
+                }
+                return usernames;
+            """, only_following)
         except:
-            pass
-        return usernames
+            return []
 
     def get_followers(self):
         self.open_followers()
@@ -349,8 +402,8 @@ class InstaBot():
     def get_following(self):
         self.open_following()
         sleep(2)
-        self.sweep_all_followers()
-        self.following = self._get_usernames_from_dialog()
+        self.sweep_all_followers(only_following=True)
+        self.following = self._get_usernames_from_dialog(only_following=True)
         self.close_followers_box()
         print('\nFunção get_following executada com sucesso!')
 
@@ -377,7 +430,7 @@ class InstaBot():
     def unfollow(self):
         self.open_following()
         sleep(2)
-        self.sweep_all_followers()
+        self.sweep_all_followers(only_following=True)
         sleep(2)
         try:
             dialog = WebDriverWait(self.driver, 10).until(
