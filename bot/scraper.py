@@ -13,36 +13,39 @@ class Scraper:
             const dialog = document.querySelector('div[role="dialog"]');
             if (!dialog) return 0;
 
+            // Scroll até o fundo do container scrollável
             const divs = dialog.querySelectorAll('div');
             for (const div of divs) {
                 const style = window.getComputedStyle(div);
                 const ov = style.overflowY;
                 if ((ov === 'auto' || ov === 'scroll' || ov === 'hidden')
-                    && div.scrollHeight > div.clientHeight && div.clientHeight > 50) {
+                    && div.scrollHeight > div.clientHeight
+                    && div.clientHeight > 50) {
                     div.scrollTo(0, div.scrollHeight);
                     break;
                 }
             }
 
             if (onlyFollowing) {
+                const followingLabels = ['Following', 'Seguindo'];
                 const buttons = dialog.querySelectorAll('button');
                 let count = 0;
                 for (const btn of buttons) {
                     const t = btn.textContent.trim();
-                    if (t === 'Following' || t === 'Seguindo') {
-                        count++;
-                    }
+                    if (followingLabels.includes(t)) count++;
                 }
                 return count;
             }
 
+            // Contar links de perfil únicos
             const links = dialog.querySelectorAll('a[href]');
             let count = 0;
             const seen = new Set();
             for (const a of links) {
                 const href = a.getAttribute('href');
                 if (href && href.startsWith('/') && href !== '/'
-                    && !href.startsWith('/explore') && !href.startsWith('/accounts')
+                    && !href.startsWith('/explore')
+                    && !href.startsWith('/accounts')
                     && !seen.has(href)) {
                     seen.add(href);
                     count++;
@@ -75,8 +78,8 @@ class Scraper:
                     break
         except BotStoppedException:
             raise
-        except Exception:
-            print('\nErro na função sweep')
+        except Exception as e:
+            print(f'\nErro na função sweep: {e}')
         print(f'\nVARREDURA REALIZADA COM SUCESSO ({last_count} perfis)')
         return last_count
 
@@ -88,33 +91,38 @@ class Scraper:
                 if (!dialog) return [];
 
                 const excluded = new Set([
-                    '', '#', 'explore', 'accounts', 'p', 'reel', 'stories', 'reels'
+                    '', '#', 'explore', 'accounts', 'p', 'reel',
+                    'stories', 'reels', 'direct'
                 ]);
                 const seen = new Set();
                 const usernames = [];
 
                 if (onlyFollowing) {
+                    const followingLabels = ['Following', 'Seguindo'];
                     const buttons = dialog.querySelectorAll('button');
                     for (const btn of buttons) {
                         const btnText = btn.textContent.trim();
-                        if (btnText === 'Following' || btnText === 'Seguindo') {
-                            const container = btn.closest('li')
-                                || btn.closest('div[style]')
-                                || btn.parentElement?.parentElement?.parentElement;
-                            if (!container) continue;
+                        if (!followingLabels.includes(btnText)) continue;
+
+                        // Subir na árvore DOM para encontrar o container da row
+                        let container = btn.parentElement;
+                        for (let i = 0; i < 8 && container && container !== dialog; i++) {
                             const links = container.querySelectorAll('a[href]');
-                            for (const a of links) {
-                                const href = a.getAttribute('href');
-                                if (!href) continue;
-                                const parts = href.replace(/\\/+$/, '').split('/');
-                                const username = parts[parts.length - 1];
-                                if (username && !seen.has(username)
-                                    && !excluded.has(username)) {
-                                    seen.add(username);
-                                    usernames.push(username);
-                                    break;
+                            if (links.length > 0) {
+                                for (const a of links) {
+                                    const href = a.getAttribute('href');
+                                    if (!href) continue;
+                                    const parts = href.replace(/\\/+$/, '').split('/');
+                                    const username = parts[parts.length - 1];
+                                    if (username && !seen.has(username)
+                                        && !excluded.has(username)) {
+                                        seen.add(username);
+                                        usernames.push(username);
+                                    }
                                 }
+                                break;
                             }
+                            container = container.parentElement;
                         }
                     }
                 } else {
@@ -133,5 +141,6 @@ class Scraper:
                 }
                 return usernames;
             """, only_following)
-        except Exception:
+        except Exception as e:
+            print(f'\nErro ao extrair usernames: {e}')
             return []
