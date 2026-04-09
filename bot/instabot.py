@@ -82,8 +82,8 @@ class InstaBot:
                 self._sleep(2)
         except BotStoppedException:
             raise
-        except Exception:
-            print('\nErro na função farm_followers')
+        except Exception as e:
+            print(f'\nErro na função farm_followers: {e}')
 
     # ── Fluxo 2.1: Listar não seguidores ─────────────────────────────
 
@@ -105,8 +105,8 @@ class InstaBot:
             print('\nListagem concluída com sucesso!')
         except BotStoppedException:
             raise
-        except Exception:
-            print('\nErro na função list_unfollowers')
+        except Exception as e:
+            print(f'\nErro na função list_unfollowers: {e}')
 
     # ── Fluxo 2.2: Deixar de seguir não seguidores ───────────────────
 
@@ -126,10 +126,12 @@ class InstaBot:
             self.scraper.sweep(only_following=True)
             self._sleep(2)
 
+            consecutive_failures = 0
             while self.unfollowers:
                 self._check()
                 removed = self.actions.unfollow_from_dialog(self.unfollowers)
                 if removed:
+                    consecutive_failures = 0
                     self.unfollowers = self.files.process_removal(
                         removed, self.unfollowers)
                     print(f'Unfollowers restantes: {len(self.unfollowers)}')
@@ -137,12 +139,17 @@ class InstaBot:
                         print('Aguardando 5 minutos antes da próxima remoção...')
                         self._sleep(300)
                 else:
-                    print('\nNenhum unfollower encontrado no dialog atual.')
-                    break
+                    consecutive_failures += 1
+                    if consecutive_failures >= 3:
+                        print('\n3 falhas consecutivas. Encerrando o loop.')
+                        break
+                    print(f'\nFalha ao remover ({consecutive_failures}/3). '
+                          'Tentando próximo...')
+                    self._sleep(10)
 
             self.nav.close_dialog()
             print('\nTodos os não-seguidores foram removidos!')
         except BotStoppedException:
             raise
-        except Exception:
-            print('\nErro na função unfollow_from_list')
+        except Exception as e:
+            print(f'\nErro na função unfollow_from_list: {e}')
