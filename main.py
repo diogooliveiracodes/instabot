@@ -9,7 +9,7 @@ from time import sleep
 import os
 
 __author__ = "Diogo Oliveira"
-__date__ = "06/01/2020"
+__date__ = "09/04/2026"
 __version__ = "2.0.0"
 
 
@@ -17,11 +17,19 @@ class InstaBot():
     def __init__(self):
 
         self.choose = '0'
+        self.sub_choose = '0'
         print('\n\nQual função deseja utilizar?\n[ 1 ] - Ganhar seguidores\n[ 2 ] - Deixar de seguir quem não te segue')
-        while self.choose != '1' and self.choose != '2':
+        while self.choose not in ('1', '2'):
             self.choose = input('\nDigite sua escolha [ 1 ou 2 ] :')
-            if self.choose != '1' and self.choose != '2':
+            if self.choose not in ('1', '2'):
                 print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
+
+        if self.choose == '2':
+            print('\n[ 1 ] - Listar não seguidores\n[ 2 ] - Deixar de seguir não seguidores')
+            while self.sub_choose not in ('1', '2'):
+                self.sub_choose = input('\nDigite sua escolha [ 1 ou 2 ] :')
+                if self.sub_choose not in ('1', '2'):
+                    print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
 
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
@@ -33,7 +41,7 @@ class InstaBot():
         self.number_to_follow = 2500
         self.followers = []
         self.following = []
-        self.unfollowers = ['lista', 'de', 'não', 'seguidores']
+        self.unfollowers = []
 
         try:
             self.do_login()
@@ -41,8 +49,10 @@ class InstaBot():
             self.dismiss_popups()
             if self.choose == '1':
                 self.farm_followers()
-            elif self.choose == '2':
-                self.unfollow_unfollowers()
+            elif self.choose == '2' and self.sub_choose == '1':
+                self.list_unfollowers()
+            elif self.choose == '2' and self.sub_choose == '2':
+                self.unfollow_from_list()
             sleep(50)
         except:
             print('\nErro na função Iniciar')
@@ -478,22 +488,40 @@ class InstaBot():
         os.makedirs(logs_dir, exist_ok=True)
         return logs_dir
 
+    def _get_unfollowers_path(self):
+        return os.path.join(self._get_logs_dir(), 'nao-seguidores.txt')
+
     def _save_unfollowers_list(self):
-        filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.txt'
-        filepath = os.path.join(self._get_logs_dir(), filename)
+        filepath = self._get_unfollowers_path()
         with open(filepath, 'w', encoding='utf-8') as f:
             for user in self.unfollowers:
                 f.write(user + '\n')
-        print(f'\nLista de não-seguidores salva em: {filepath}')
-        return filepath
+        print(f'\nLista de não-seguidores salva em: {filepath} ({len(self.unfollowers)} perfis)')
+
+    def _load_unfollowers_list(self):
+        filepath = self._get_unfollowers_path()
+        if not os.path.exists(filepath):
+            print(f'\nArquivo {filepath} não encontrado. Execute a opção "Listar não seguidores" primeiro.')
+            return False
+        with open(filepath, 'r', encoding='utf-8') as f:
+            self.unfollowers = [line.strip() for line in f if line.strip()]
+        print(f'\nLista de não-seguidores carregada: {len(self.unfollowers)} perfis')
+        return len(self.unfollowers) > 0
+
+    def _remove_from_unfollowers_list(self, username):
+        if username in self.unfollowers:
+            self.unfollowers.remove(username)
+        self._save_unfollowers_list()
 
     def _append_removed(self, username):
         filepath = os.path.join(self._get_logs_dir(), 'removidos.txt')
         with open(filepath, 'a', encoding='utf-8') as f:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write(f'{username} - {timestamp}\n')
+        self._remove_from_unfollowers_list(username)
 
-    def unfollow_unfollowers(self):
+    def list_unfollowers(self):
+        """Fluxo 2.1: Raspa seguidores e seguindo, calcula não-seguidores e salva a lista."""
         try:
             self.open_self_profile()
             sleep(2)
@@ -508,19 +536,29 @@ class InstaBot():
             print(f'\nNúmero de perfis que não seguem de volta: {len(self.unfollowers)}')
 
             self._save_unfollowers_list()
+            print('\nListagem concluída com sucesso!')
+        except:
+            print('\nErro na função list_unfollowers')
+
+    def unfollow_from_list(self):
+        """Fluxo 2.2: Carrega a lista nao-seguidores.txt e remove o follow de cada um."""
+        try:
+            if not self._load_unfollowers_list():
+                print('\nNenhum não-seguidor encontrado na lista. Execute a opção 1 primeiro.')
+                return
+
+            print(f'\nIniciando remoção de {len(self.unfollowers)} não-seguidores...')
 
             while len(self.unfollowers) > 0:
                 self.unfollow()
                 sleep(2)
-                self.open_self_profile()
-                sleep(2)
-                self.get_followers()
-                self.get_following()
-                self.get_unfollowers()
-                print(f'\nUnfollowers restantes: {len(self.unfollowers)}')
+                if len(self.unfollowers) > 0:
+                    self.open_self_profile()
+                    sleep(2)
 
+            print('\nTodos os não-seguidores foram removidos!')
         except:
-            print('\nErro na função unfollow_unfollowers')
+            print('\nErro na função unfollow_from_list')
 
     def close_popup(self):
         try:

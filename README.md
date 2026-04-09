@@ -3,23 +3,69 @@ Este protótipo tem a finalidade de aumentar a quantidade de seguidores de um de
 
 ## 🚀 Funcionalidades
 * Seguir seguidores de perfis de troca de seguidores para que eles te sigam de volta.
+* Listar perfis que não te seguem de volta.
 * Deixar de seguir perfis que não te seguem.
 
 ## 💻 Pré-requisitos
-* Python3 - Download: https://www.python.org/downloads/
-* Chrome Webdriver - Download: https://chromedriver.chromium.org/downloads
+* Python 3 — https://www.python.org/downloads/
+* Google Chrome instalado
 * Windows
 
-## 🤖 Instalação:
-1. Faça o download do Chrome Webdriver.
-2. Salve o executável do Chrome Webdriver no endereço: C:\Program Files (x86)\chromedriver.exe Caso fizer a instalação em endereço diferente, certifique-se de alterar na linha 36 a variável PATH com o novo endereço do arquivo.
-3. Faça o download e instale o python3.*
-4. Utilize o comando "pip install selenium" no terminal para instalar os pacotes.
-5. Faça o download do arquivo main.py (neste repositório).
-6. Abra sua IDE de preferência e configure as variáveis: <br>
-  6.1 self.user_login - login do usuario que quer ganhar seguidores. <br>
-  6.2 self.user_password - senha do usuario que quer ganhar seguidores.
-7. Execute o código e veja a mágica acontecer.
+## 🤖 Instalação
+1. Clone o repositório ou baixe o arquivo `main.py`.
+2. Instale a dependência do Selenium:
+   ```
+   pip install selenium
+   ```
+3. Abra o arquivo `main.py` e configure as variáveis:
+   - `self.user_login` — e-mail ou usuário do Instagram.
+   - `self.user_password` — senha da conta.
+4. Execute o script:
+   ```
+   python main.py
+   ```
+
+## 📖 Como usar
+
+Ao executar o script, o menu principal será exibido:
+
+```
+[ 1 ] - Ganhar seguidores
+[ 2 ] - Deixar de seguir quem não te segue
+```
+
+### Opção 1 — Ganhar seguidores
+O bot abre o perfil configurado em `self.profile_list`, percorre a lista de seguidores desse perfil e segue cada um deles para que sigam de volta.
+
+### Opção 2 — Deixar de seguir quem não te segue
+Ao selecionar esta opção, um sub-menu é apresentado:
+
+```
+[ 1 ] - Listar não seguidores
+[ 2 ] - Deixar de seguir não seguidores
+```
+
+#### 2.1 — Listar não seguidores
+Raspa as listas de seguidores e seguindo do perfil logado, compara ambas e salva os perfis que não seguem de volta em `logs/nao-seguidores.txt`. Nenhum unfollow é realizado.
+
+#### 2.2 — Deixar de seguir não seguidores
+Carrega o arquivo `logs/nao-seguidores.txt` gerado pela opção 2.1 e começa a remover o follow de cada perfil da lista. A cada remoção:
+- O perfil é adicionado em `logs/removidos.txt` com data e hora.
+- O perfil é removido de `logs/nao-seguidores.txt`.
+
+Se o script for interrompido, basta executar a opção 2.2 novamente — ele continua de onde parou.
+
+> **Dica:** execute a opção 2.1 primeiro para gerar a lista, revise o arquivo `logs/nao-seguidores.txt` se desejar, e depois execute a opção 2.2 para iniciar a remoção.
+
+## 📂 Estrutura de arquivos
+```
+instabot/
+├── main.py              # Script principal
+├── logs/
+│   ├── nao-seguidores.txt   # Lista dos perfis que não seguem de volta
+│   └── removidos.txt        # Histórico de perfis removidos com timestamp
+└── README.md
+```
 
 ## ☠️ Aviso!
 A responsabilidade pela utilização deste código é totalmente sua. O mesmo foi desenvolvido para fins acadêmicos e não comerciais. O Instagram não autoriza a utilização de bots em sua plataforma.
