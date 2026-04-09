@@ -1,9 +1,14 @@
 import customtkinter as ctk
+import ctypes
 import threading
 import queue
 import sys
 import config
 from bot import InstaBot, BotStoppedException
+
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_DISPLAY_REQUIRED = 0x00000002
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -152,9 +157,22 @@ class App(ctk.CTk):
             pass
         self.after(100, self._poll_log)
 
+    # ── Controle de suspensão do sistema ─────────────────────────────
+
+    @staticmethod
+    def _prevent_sleep():
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+        )
+
+    @staticmethod
+    def _allow_sleep():
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+
     # ── Estados da interface ─────────────────────────────────────────
 
     def _set_idle_state(self):
+        self._allow_sleep()
         self._btn_list.configure(state="normal")
         self._btn_unfollow.configure(state="normal")
         self._btn_farm.configure(state="normal")
@@ -164,6 +182,7 @@ class App(ctk.CTk):
         self._status_label.configure(text="● Aguardando", text_color="gray")
 
     def _set_running_state(self, label):
+        self._prevent_sleep()
         self._btn_list.configure(state="disabled")
         self._btn_unfollow.configure(state="disabled")
         self._btn_farm.configure(state="disabled")
@@ -247,6 +266,7 @@ class App(ctk.CTk):
     def _on_close(self):
         self._stop_event.set()
         self._cleanup_bot()
+        self._allow_sleep()
         sys.stdout = self._original_stdout
         self.destroy()
 
