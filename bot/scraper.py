@@ -7,13 +7,15 @@ class Scraper:
         self.driver = driver
         self._stop_event = stop_event
 
-    def _scroll_and_count(self, only_following=False):
+    def _scroll_and_count(self):
+        """Scrolla o dialog e retorna a contagem de perfis únicos por links.
+        Sempre conta por links (não por botões) para evitar subcontagem
+        durante lazy loading.
+        """
         return self.driver.execute_script("""
-            const onlyFollowing = arguments[0];
             const dialog = document.querySelector('div[role="dialog"]');
             if (!dialog) return 0;
 
-            // Scroll até o fundo do container scrollável
             const divs = dialog.querySelectorAll('div');
             for (const div of divs) {
                 const style = window.getComputedStyle(div);
@@ -26,18 +28,6 @@ class Scraper:
                 }
             }
 
-            if (onlyFollowing) {
-                const followingLabels = ['Following', 'Seguindo'];
-                const buttons = dialog.querySelectorAll('button');
-                let count = 0;
-                for (const btn of buttons) {
-                    const t = btn.textContent.trim();
-                    if (followingLabels.includes(t)) count++;
-                }
-                return count;
-            }
-
-            // Contar links de perfil únicos
             const links = dialog.querySelectorAll('a[href]');
             let count = 0;
             const seen = new Set();
@@ -52,10 +42,12 @@ class Scraper:
                 }
             }
             return count;
-        """, only_following)
+        """)
 
-    def sweep(self, only_following=False, max_iterations=None):
+    def sweep(self, only_following=False, max_iterations=None,
+              save_callback=None):
         last_count = 0
+        last_saved_at = 0
         try:
             sleep(2)
             stable_checks = 0
@@ -63,7 +55,7 @@ class Scraper:
             while stable_checks < 3:
                 if self._stop_event and self._stop_event.is_set():
                     raise BotStoppedException()
-                count = self._scroll_and_count(only_following=only_following)
+                count = self._scroll_and_count()
                 sleep(2)
                 if count == last_count:
                     stable_checks += 1
@@ -73,12 +65,32 @@ class Scraper:
                 iterations += 1
                 if iterations % 10 == 0:
                     print(f'  Scroll: {count} perfis carregados...')
+
+                if save_callback and (count - last_saved_at) >= 100:
+                    usernames = self.get_usernames(only_following)
+                    save_callback(usernames)
+                    last_saved_at = count
+                    print(f'  Progresso salvo: {len(usernames)} perfis')
+
                 if max_iterations and iterations >= max_iterations:
                     print(f'  Limite de iterações atingido ({count} perfis)')
                     break
         except BotStoppedException:
+            if save_callback and last_count > 0:
+                usernames = self.get_usernames(only_following)
+                save_callback(usernames)
+                print(f'  Progresso salvo antes de parar: '
+                      f'{len(usernames)} perfis')
             raise
         except Exception as e:
+            if save_callback and last_count > 0:
+                try:
+                    usernames = self.get_usernames(only_following)
+                    save_callback(usernames)
+                    print(f'  Progresso salvo após erro: '
+                          f'{len(usernames)} perfis')
+                except Exception:
+                    pass
             print(f'\nErro na função sweep: {e}')
         print(f'\nVARREDURA REALIZADA COM SUCESSO ({last_count} perfis)')
         return last_count

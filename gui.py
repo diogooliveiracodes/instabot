@@ -318,40 +318,84 @@ class MainScreen(ctk.CTkFrame):
         self._stop_event.clear()
         self._set_running_state(labels.get(task, "Executando..."))
 
+        max_retries = 3
+
         def worker():
+            import traceback
             logger.set_profile_dir(self._profile_dir)
-            log_path = logger.start_session()
-            print(f"Arquivo de log: {log_path}")
-            try:
-                self._bot = InstaBot(
-                    login=self._login,
-                    password=self._password,
-                    profile_dir=self._profile_dir,
-                    stop_event=self._stop_event,
-                )
-                self._bot.start()
 
-                if task == "list":
-                    self._bot.list_unfollowers()
-                elif task == "unfollow":
-                    self._bot.unfollow_from_list()
-                elif task == "farm":
-                    self._bot.farm_followers()
-                elif task == "lost":
-                    self._bot.check_lost_followers()
-
-                print("\nOperação concluída com sucesso!")
-            except BotStoppedException:
-                print("\nBot parado pelo usuário.")
-            except Exception as e:
+            for attempt in range(1, max_retries + 1):
                 if self._stop_event.is_set():
+                    break
+
+                log_path = logger.start_session()
+                print(f"Arquivo de log: {log_path}")
+                if attempt > 1:
+                    print(f"--- Tentativa {attempt}/{max_retries} ---")
+
+                bot = None
+                try:
+                    bot = InstaBot(
+                        login=self._login,
+                        password=self._password,
+                        profile_dir=self._profile_dir,
+                        stop_event=self._stop_event,
+                    )
+                    self._bot = bot
+                    bot.start()
+
+                    if task == "list":
+                        bot.list_unfollowers()
+                    elif task == "unfollow":
+                        bot.unfollow_from_list()
+                    elif task == "farm":
+                        bot.farm_followers()
+                    elif task == "lost":
+                        bot.check_lost_followers()
+
+                    print("\nOperação concluída com sucesso!")
+                    logger.stop_session()
+                    break
+
+                except BotStoppedException:
                     print("\nBot parado pelo usuário.")
-                else:
-                    print(f"\nErro: {e}")
-            finally:
-                logger.stop_session()
-                self._cleanup_bot()
-                self.after(0, self._set_idle_state)
+                    logger.stop_session()
+                    break
+
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    if self._stop_event.is_set():
+                        print("\nBot parado pelo usuário.")
+                        logger.stop_session()
+                        break
+
+                    print(f"\nErro (tentativa {attempt}/{max_retries}): "
+                          f"{e}\n{tb}")
+                    logger.stop_session()
+
+                    if bot:
+                        try:
+                            bot.quit()
+                        except Exception:
+                            pass
+                        bot = None
+                        self._bot = None
+
+                    if attempt < max_retries:
+                        print(f"\nReiniciando em 5 segundos...")
+                        import time
+                        time.sleep(5)
+                    else:
+                        print(f"\n{max_retries} tentativas falharam. "
+                              "Encerrando.")
+
+            if bot:
+                try:
+                    bot.quit()
+                except Exception:
+                    pass
+            self._bot = None
+            self.after(0, self._set_idle_state)
 
         self._bot_thread = threading.Thread(target=worker, daemon=True)
         self._bot_thread.start()
@@ -372,12 +416,13 @@ class MainScreen(ctk.CTkFrame):
         threading.Thread(target=force_quit, daemon=True).start()
 
     def _cleanup_bot(self):
-        if self._bot:
+        bot = self._bot
+        self._bot = None
+        if bot:
             try:
-                self._bot.quit()
+                bot.quit()
             except Exception:
                 pass
-            self._bot = None
 
     # ── Ver listas ────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import config
+import os
 import threading
 from time import sleep
 from bot.browser import BrowserManager
@@ -111,8 +112,10 @@ class InstaBot:
         self._check()
         self.nav.open_followers()
         self._sleep(2)
-        self.scraper.sweep()
+        self.scraper.sweep(
+            save_callback=lambda users: self.files.save_followers(users))
         self.followers = self.scraper.get_usernames()
+        self.files.save_followers(self.followers)
         self.nav.close_dialog()
         print('\nFunção get_followers executada com sucesso!')
 
@@ -120,10 +123,25 @@ class InstaBot:
         self._check()
         self.nav.open_following()
         self._sleep(2)
-        self.scraper.sweep(only_following=True)
+        self.scraper.sweep(
+            only_following=True,
+            save_callback=lambda users: self._save_partial(
+                '_following_partial.json', users))
         self.following = self.scraper.get_usernames(only_following=True)
+        self._remove_partial('_following_partial.json')
         self.nav.close_dialog()
         print('\nFunção get_following executada com sucesso!')
+
+    def _save_partial(self, filename, data):
+        import json
+        path = os.path.join(self._profile_dir, filename)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    def _remove_partial(self, filename):
+        path = os.path.join(self._profile_dir, filename)
+        if os.path.exists(path):
+            os.remove(path)
 
     def get_unfollowers(self):
         self.unfollowers = [u for u in self.following if u not in self.followers]
@@ -171,8 +189,16 @@ class InstaBot:
             self.files.save_followers(self.followers)
             print('\nListagem concluída com sucesso!')
         except BotStoppedException:
+            if self.followers:
+                self.files.save_followers(self.followers)
+            if self.following:
+                self.get_unfollowers()
+                self.files.save_unfollowers(self.unfollowers)
+            print('\nProgresso parcial salvo.')
             raise
         except Exception as e:
+            if self.followers:
+                self.files.save_followers(self.followers)
             print(f'\nErro na função list_unfollowers: {e}')
 
     # ── Fluxo 3: Verificar quem deixou de seguir ─────────────────────
@@ -190,8 +216,13 @@ class InstaBot:
             print('\nVerificação concluída com sucesso!')
             return lost
         except BotStoppedException:
+            if self.followers:
+                self.files.save_followers(self.followers)
+                print('\nSeguidores parciais salvos.')
             raise
         except Exception as e:
+            if self.followers:
+                self.files.save_followers(self.followers)
             print(f'\nErro na função check_lost_followers: {e}')
             return []
 
