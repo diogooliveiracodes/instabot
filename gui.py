@@ -1,8 +1,11 @@
 import customtkinter as ctk
 import ctypes
+import json
+import os
 import threading
 import queue
 import sys
+import webbrowser
 import config
 from bot import InstaBot, BotStoppedException
 from bot import logger
@@ -120,7 +123,15 @@ class App(ctk.CTk):
             height=45, fg_color="#c0392b", hover_color="#e74c3c",
             command=self._stop_bot,
         )
-        self._btn_stop.grid(row=1, column=1, padx=10, pady=(5, 10), sticky="ew")
+        self._btn_stop.grid(row=1, column=1, padx=10, pady=(5, 5), sticky="ew")
+
+        self._btn_view_list = ctk.CTkButton(
+            actions_frame, text="📋  Ver lista de não seguidores",
+            height=40, fg_color="#7f8c8d", hover_color="#95a5a6",
+            command=self._open_unfollowers_view,
+        )
+        self._btn_view_list.grid(
+            row=2, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="ew")
 
         # ── Status ──
         self._status_label = ctk.CTkLabel(
@@ -266,6 +277,11 @@ class App(ctk.CTk):
                 pass
             self._bot = None
 
+    # ── Ver lista de não seguidores ──────────────────────────────────
+
+    def _open_unfollowers_view(self):
+        UnfollowersListWindow(self)
+
     # ── Fechar janela ────────────────────────────────────────────────
 
     def _on_close(self):
@@ -274,6 +290,96 @@ class App(ctk.CTk):
         self._allow_sleep()
         sys.stdout = self._original_stdout
         self.destroy()
+
+
+class UnfollowersListWindow(ctk.CTkToplevel):
+    """Janela que exibe a lista de não-seguidores com links para o perfil."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Não Seguidores")
+        self.geometry("500x600")
+        self.resizable(False, True)
+        self.transient(parent)
+        self.after(100, self.lift)
+
+        self._users = self._load_list()
+        self._build_ui()
+
+    def _load_list(self):
+        logs_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'logs')
+        json_path = os.path.join(logs_dir, 'nao-seguidores.json')
+        txt_path = os.path.join(logs_dir, 'nao-seguidores.txt')
+
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        if os.path.exists(txt_path):
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                return [line.strip() for line in f if line.strip()]
+        return []
+
+    def _build_ui(self):
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(15, 5))
+
+        ctk.CTkLabel(
+            header, text="Não Seguidores",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            header,
+            text=f"{len(self._users)} perfis",
+            font=ctk.CTkFont(size=14),
+            text_color="gray",
+        ).pack(side="right")
+
+        if not self._users:
+            ctk.CTkLabel(
+                self,
+                text="Nenhum não-seguidor encontrado.\n"
+                     "Execute 'Listar não seguidores' primeiro.",
+                font=ctk.CTkFont(size=13),
+                text_color="gray",
+            ).pack(expand=True)
+            return
+
+        scroll = ctk.CTkScrollableFrame(self)
+        scroll.pack(fill="both", expand=True, padx=20, pady=(5, 15))
+        scroll.columnconfigure(0, weight=0)
+        scroll.columnconfigure(1, weight=1)
+        scroll.columnconfigure(2, weight=0)
+
+        for i, username in enumerate(self._users):
+            bg = ("gray20", "gray17")[i % 2]
+
+            num_label = ctk.CTkLabel(
+                scroll, text=f"{i + 1}.",
+                font=ctk.CTkFont(size=12),
+                text_color="gray",
+                width=40, anchor="e",
+            )
+            num_label.grid(row=i, column=0, padx=(5, 2), pady=2, sticky="e")
+
+            name_label = ctk.CTkLabel(
+                scroll, text=username,
+                font=ctk.CTkFont(size=13),
+                anchor="w",
+            )
+            name_label.grid(row=i, column=1, padx=(5, 5), pady=2, sticky="w")
+
+            link_btn = ctk.CTkButton(
+                scroll, text="🔗",
+                width=36, height=28,
+                font=ctk.CTkFont(size=14),
+                fg_color="transparent",
+                hover_color="gray30",
+                command=lambda u=username: webbrowser.open(
+                    f"https://www.instagram.com/{u}/"),
+            )
+            link_btn.grid(row=i, column=2, padx=(0, 5), pady=2)
 
 
 def run():
