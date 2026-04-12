@@ -5,6 +5,7 @@ import queue
 import sys
 import config
 from bot import InstaBot, BotStoppedException
+from bot import logger
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -24,6 +25,7 @@ class LogRedirector:
     def write(self, text):
         if text and text.strip():
             self._queue.put(text.rstrip("\n"))
+            logger.log(text.strip())
         if self._original:
             self._original.write(text)
 
@@ -213,6 +215,8 @@ class App(ctk.CTk):
         config.USER_PASSWORD = password
 
         def worker():
+            log_path = logger.start_session()
+            print(f"Arquivo de log: {log_path}")
             try:
                 self._bot = InstaBot(stop_event=self._stop_event)
                 self._bot.start()
@@ -233,6 +237,7 @@ class App(ctk.CTk):
                 else:
                     print(f"\nErro: {e}")
             finally:
+                logger.stop_session()
                 self._cleanup_bot()
                 self.after(0, self._set_idle_state)
 

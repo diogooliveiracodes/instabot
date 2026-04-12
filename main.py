@@ -1,8 +1,27 @@
 import sys
 
 
+class _CliLogger:
+    """Tee para stdout que também escreve no arquivo de log."""
+
+    def __init__(self, original):
+        self._original = original
+
+    def write(self, text):
+        if self._original:
+            self._original.write(text)
+        if text and text.strip():
+            from bot import logger
+            logger.log(text.strip())
+
+    def flush(self):
+        if self._original:
+            self._original.flush()
+
+
 def cli():
     from bot import InstaBot
+    from bot import logger
     from time import sleep
 
     choice = '0'
@@ -25,6 +44,10 @@ def cli():
             if sub_choice not in ('1', '2'):
                 print('\nOpção inválida, escolha entre [ 1 ou 2 ]')
 
+    log_path = logger.start_session()
+    sys.stdout = _CliLogger(sys.stdout)
+    print(f'Arquivo de log: {log_path}')
+
     bot = InstaBot()
     try:
         bot.start()
@@ -37,10 +60,12 @@ def cli():
             bot.unfollow_from_list()
 
         sleep(50)
-    except Exception:
-        print('\nErro na função Iniciar')
+    except Exception as e:
+        print(f'\nErro na função Iniciar: {e}')
 
     print('\nFim do Script')
+    logger.stop_session()
+    sys.stdout = sys.__stdout__
 
 
 if __name__ == '__main__':

@@ -40,6 +40,26 @@ class InstaBot:
         self._check()
         self.browser.dismiss_popups()
 
+    def _restart_session(self):
+        """Fecha o navegador e abre uma nova sessão completa."""
+        print('\n' + '=' * 50)
+        print('REINICIANDO SESSÃO DO NAVEGADOR')
+        print('=' * 50)
+        self.browser.quit()
+        self._sleep(5)
+        self._check()
+
+        self.driver = self.browser.setup(config.INSTAGRAM_URL)
+        self.nav = Navigator(self.driver)
+        self.scraper = Scraper(self.driver, self._stop_event)
+        self.actions = ActionHandler(self.driver, self._stop_event)
+
+        self.browser.login(config.USER_LOGIN, config.USER_PASSWORD)
+        self._sleep(5)
+        self._check()
+        self.browser.dismiss_popups()
+        print('Nova sessão iniciada com sucesso!\n')
+
     # ── Coleta de dados ──────────────────────────────────────────────
 
     def get_followers(self):
@@ -117,38 +137,59 @@ class InstaBot:
                 print('\nNenhum não-seguidor na lista. Execute a opção 1 primeiro.')
                 return
 
-            print(f'\nIniciando remoção de {len(self.unfollowers)} não-seguidores...')
+            total = len(self.unfollowers)
+            batch_size = config.UNFOLLOW_BATCH_SIZE
+            interval = config.UNFOLLOW_INTERVAL
 
-            self.nav.open_self_profile()
-            self._sleep(2)
-            self.nav.open_following()
-            self._sleep(2)
-            self.scraper.sweep(only_following=True)
-            self._sleep(2)
+            print(f'\nIniciando remoção de {total} não-seguidores...')
+            print(f'Configuração: {batch_size} por lote, '
+                  f'{interval // 60} min entre cada unfollow')
 
+            batch_count = 0
             consecutive_failures = 0
+
             while self.unfollowers:
                 self._check()
-                removed = self.actions.unfollow_from_dialog(self.unfollowers)
-                if removed:
+                username = self.unfollowers[0]
+
+                success = self.actions.unfollow_profile(
+                    username, self.unfollowers)
+
+                if success:
                     consecutive_failures = 0
+                    batch_count += 1
                     self.unfollowers = self.files.process_removal(
-                        removed, self.unfollowers)
-                    print(f'Unfollowers restantes: {len(self.unfollowers)}')
-                    if self.unfollowers:
-                        print('Aguardando 5 minutos antes da próxima remoção...')
-                        self._sleep(300)
+                        username, self.unfollowers)
+                    print(f'Unfollowers restantes: {len(self.unfollowers)} '
+                          f'(lote {batch_count}/{batch_size})')
+
+                    if not self.unfollowers:
+                        break
+
+                    if batch_count >= batch_size:
+                        print(f'\nLote de {batch_count} unfollows concluído.')
+                        print(f'Aguardando {interval // 60} minutos '
+                              'antes de reiniciar a sessão...')
+                        self._sleep(interval)
+                        self._restart_session()
+                        batch_count = 0
+                    else:
+                        print(f'Aguardando {interval // 60} minutos '
+                              'antes da próxima remoção...')
+                        self._sleep(interval)
                 else:
                     consecutive_failures += 1
-                    if consecutive_failures >= 3:
-                        print('\n3 falhas consecutivas. Encerrando o loop.')
+                    if consecutive_failures >= 5:
+                        print('\n5 falhas consecutivas. Encerrando o loop.')
                         break
-                    print(f'\nFalha ao remover ({consecutive_failures}/3). '
-                          'Tentando próximo...')
+                    print(f'  Falha ({consecutive_failures}/5). '
+                          'Pulando para o próximo...')
+                    self.unfollowers.append(self.unfollowers.pop(0))
+                    self.files.save_unfollowers(self.unfollowers)
                     self._sleep(10)
 
-            self.nav.close_dialog()
-            print('\nTodos os não-seguidores foram removidos!')
+            removed_count = total - len(self.unfollowers)
+            print(f'\nProcesso concluído! {removed_count} perfis removidos.')
         except BotStoppedException:
             raise
         except Exception as e:

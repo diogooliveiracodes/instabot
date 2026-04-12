@@ -8,8 +8,15 @@ from bot.exceptions import BotStoppedException
 
 
 FOLLOWING_LABELS = ('Following', 'Seguindo')
-UNFOLLOW_LABELS = ('Unfollow', 'Deixar de seguir')
+UNFOLLOW_LABELS = ('Unfollow', 'Deixar de seguir', 'Parar de seguir')
 FOLLOW_LABELS = ('Follow', 'Seguir')
+
+MODAL_HINTS = (
+    'Unfollow', 'Deixar de seguir', 'Parar de seguir',
+    'Mute', 'Silenciar', 'Restrict', 'Restringir',
+    'Add to close friends', 'Adicionar à lista',
+    'Add to favorites', 'Adicionar aos Favoritos',
+)
 
 
 class ActionHandler:
@@ -18,7 +25,6 @@ class ActionHandler:
         self._stop_event = stop_event
 
     def _wait(self, seconds):
-        """Sleep interruptível pelo stop_event."""
         if self._stop_event:
             if self._stop_event.wait(seconds):
                 raise BotStoppedException()
@@ -54,184 +60,272 @@ class ActionHandler:
             print('\nErro na função follow')
         print('\nPERFIS SEGUIDOS COM SUCESSO')
 
-    # ── Unfollow ──────────────────────────────────────────────────────
+    # ── Unfollow (via página do perfil) ───────────────────────────────
 
-    def unfollow_from_dialog(self, unfollowers):
-        """Percorre o dialog e remove o follow do primeiro perfil da lista.
-        Retorna o username removido ou None.
-        """
+    def unfollow_profile(self, username, unfollowers_list):
+        if username not in unfollowers_list:
+            print(f'  BLOQUEADO: {username} não está na lista. Pulando.')
+            return False
+
+        profile_url = f'https://www.instagram.com/{username}/'
+        print(f'\n  Abrindo perfil: {profile_url}')
+
         try:
-            dialog = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, 'div[role="dialog"]'))
-            )
+            self.driver.get(profile_url)
+            sleep(4)
 
-            # 1) Encontrar o botão "Following" do unfollower e clicar
-            username, btn = self._find_following_button(dialog, unfollowers)
-            if not username:
-                return None
+            following_btn = self._find_following_button_on_profile()
+            if not following_btn:
+                print(f'  Botão "Following"/"Seguindo" não encontrado em '
+                      f'{username}. Pode já ter sido removido.')
+                return False
 
-            print(f'  Clicando em "Following" de {username}...')
-            self._real_click(btn)
-            sleep(2)
+            if not self._open_unfollow_modal(following_btn):
+                print(f'  Modal não abriu para {username}.')
+                return False
 
-            # 2) Clicar no botão "Unfollow" da confirmação
-            if not self._click_unfollow_confirm():
-                print(f'  Confirmação não encontrada para: {username}')
+            if not self._click_unfollow_in_modal():
+                print(f'  "Deixar de seguir" não encontrado para {username}.')
                 self._dismiss_popup()
-                return None
+                return False
 
             sleep(2)
 
-            # 3) Verificar se o unfollow funcionou
-            if self._verify_unfollowed(dialog, username):
-                print(f'\nRemovido o follow do perfil: {username}')
-                return username
+            if self._verify_unfollowed_on_profile():
+                print(f'  Removido o follow do perfil: {username}')
+                return True
 
-            print(f'\nUnfollow de {username} não confirmado pela verificação.')
-            return None
+            print(f'  Unfollow de {username} não confirmado.')
+            return False
 
         except Exception as e:
-            print(f'\nErro ao tentar unfollow no dialog: {e}')
-        return None
+            print(f'  Erro ao tentar unfollow de {username}: {e}')
+            return False
 
-    def _find_following_button(self, dialog, unfollowers):
-        """Encontra o botão 'Following'/'Seguindo' de um unfollower no dialog.
-        Retorna (username, button_element) ou (None, None).
-        """
-        buttons = dialog.find_elements(By.TAG_NAME, 'button')
+    # ── Encontrar botão Following ─────────────────────────────────────
 
-        for btn in buttons:
+    def _find_following_button_on_profile(self):
+        for label in FOLLOWING_LABELS:
             try:
+                btn = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable(
+                        (By.XPATH,
+                         f'//button[contains(normalize-space(.), "{label}")]'))
+                )
                 txt = btn.text.strip()
-            except Exception:
-                continue
-            if txt not in FOLLOWING_LABELS:
-                continue
-
-            try:
-                parent = btn.find_element(
-                    By.XPATH,
-                    './ancestor::div[.//a[contains(@href, "/")]]')
+                if any(l in txt for l in FOLLOWING_LABELS):
+                    print(f'  Botão encontrado: "{txt}"')
+                    return btn
             except Exception:
                 continue
 
-            links = parent.find_elements(By.TAG_NAME, 'a')
-            for link in links:
-                try:
-                    href = link.get_attribute('href')
-                except Exception:
-                    continue
-                if not href:
-                    continue
-                uname = href.rstrip('/').split('/')[-1]
-                if uname in unfollowers:
-                    return uname, btn
-
-        return None, None
-
-    def _click_unfollow_confirm(self):
-        """Encontra e clica no botão 'Unfollow'/'Deixar de seguir'.
-        Usa 3 estratégias: Selenium XPath, Selenium find_elements, ActionChains.
-        """
-        # Estratégia 1: XPath com normalize-space (Selenium click)
         try:
-            unfollow_btn = WebDriverWait(self.driver, 8).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH,
-                     '//button[normalize-space(.)="Unfollow" '
-                     'or normalize-space(.)="Deixar de seguir"]'))
-            )
-            sleep(0.5)
-            self._real_click(unfollow_btn)
-            return True
-        except Exception:
-            pass
-
-        # Estratégia 2: percorrer todos os botões pelo texto visível
-        try:
-            all_buttons = self.driver.find_elements(By.TAG_NAME, 'button')
-            for b in all_buttons:
-                try:
-                    txt = b.text.strip()
-                except Exception:
-                    continue
-                if txt in UNFOLLOW_LABELS:
-                    self._real_click(b)
-                    return True
-        except Exception:
-            pass
-
-        # Estratégia 3: JavaScript busca por textContent e dispara click nativo
-        try:
-            found = self.driver.execute_script("""
+            btn = self.driver.execute_script("""
                 const labels = arguments[0];
                 const btns = document.querySelectorAll('button');
-                for (const btn of btns) {
-                    const t = btn.textContent.trim();
-                    if (labels.includes(t)) {
-                        btn.dispatchEvent(new PointerEvent('pointerdown',
-                            {bubbles: true, cancelable: true}));
-                        btn.dispatchEvent(new MouseEvent('mousedown',
-                            {bubbles: true, cancelable: true}));
-                        btn.dispatchEvent(new PointerEvent('pointerup',
-                            {bubbles: true, cancelable: true}));
-                        btn.dispatchEvent(new MouseEvent('mouseup',
-                            {bubbles: true, cancelable: true}));
-                        btn.dispatchEvent(new MouseEvent('click',
-                            {bubbles: true, cancelable: true}));
-                        return true;
+                for (const b of btns) {
+                    const t = b.textContent.trim();
+                    for (const l of labels) {
+                        if (t.includes(l)) return b;
+                    }
+                }
+                return null;
+            """, list(FOLLOWING_LABELS))
+            if btn:
+                print(f'  Botão encontrado (JS): "{btn.text.strip()}"')
+                return btn
+        except Exception:
+            pass
+
+        return None
+
+    # ── Abrir modal e verificar ───────────────────────────────────────
+
+    def _open_unfollow_modal(self, following_btn):
+        """Clica no botão Following UMA vez e espera o modal aparecer.
+        Se não abrir, tenta outros métodos de click (sem re-clicar).
+        """
+        click_methods = [
+            lambda: following_btn.click(),
+            lambda: ActionChains(self.driver).move_to_element(
+                following_btn).pause(0.5).click().perform(),
+            lambda: self.driver.execute_script("""
+                const btn = arguments[0];
+                btn.dispatchEvent(new PointerEvent('pointerdown',
+                    {bubbles:true, cancelable:true}));
+                btn.dispatchEvent(new MouseEvent('mousedown',
+                    {bubbles:true, cancelable:true}));
+                btn.dispatchEvent(new PointerEvent('pointerup',
+                    {bubbles:true, cancelable:true}));
+                btn.dispatchEvent(new MouseEvent('mouseup',
+                    {bubbles:true, cancelable:true}));
+                btn.dispatchEvent(new MouseEvent('click',
+                    {bubbles:true, cancelable:true}));
+            """, following_btn),
+        ]
+
+        for i, click_fn in enumerate(click_methods):
+            try:
+                click_fn()
+                print(f'  Click executado (método {i + 1}/3)')
+            except Exception as e:
+                print(f'  Click falhou (método {i + 1}): {e}')
+                continue
+
+            for wait in range(6):
+                sleep(1)
+                if self._is_modal_open():
+                    print(f'  Modal detectado após {wait + 1}s')
+                    return True
+
+            print(f'  Modal não detectado. Fechando possível estado '
+                  f'intermediário...')
+            self._dismiss_popup()
+            sleep(1)
+
+        return False
+
+    def _is_modal_open(self):
+        """Detecta o modal buscando QUALQUER elemento com texto das opções.
+        Usa JS textContent para máxima confiabilidade.
+        """
+        try:
+            return self.driver.execute_script("""
+                const hints = arguments[0];
+                const all = document.querySelectorAll('*');
+                for (const el of all) {
+                    if (el.children.length > 0) continue;
+                    const t = el.textContent.trim();
+                    if (!t || t.length > 60) continue;
+                    for (const hint of hints) {
+                        if (t === hint) return true;
                     }
                 }
                 return false;
+            """, list(MODAL_HINTS))
+        except Exception:
+            return False
+
+    # ── Clicar em Unfollow no modal ───────────────────────────────────
+
+    def _click_unfollow_in_modal(self):
+        """Encontra e clica no botão/elemento 'Deixar de seguir'/'Unfollow'.
+        Busca qualquer elemento clicável com o texto correto.
+        """
+        # Estratégia 1: JS - busca TODOS os elementos (não só button)
+        try:
+            clicked = self.driver.execute_script("""
+                const labels = arguments[0];
+                const all = document.querySelectorAll('*');
+                for (const el of all) {
+                    const t = el.textContent.trim();
+                    for (const label of labels) {
+                        if (t === label) {
+                            const clickable = el.closest(
+                                'button, [role="button"], [role="menuitem"], a'
+                            ) || el;
+                            clickable.click();
+                            return t;
+                        }
+                    }
+                }
+                return null;
             """, list(UNFOLLOW_LABELS))
-            if found:
+            if clicked:
+                print(f'  Confirmação clicada (JS): "{clicked}"')
                 return True
         except Exception:
             pass
 
+        # Estratégia 2: XPath normalize-space para cada label
+        for label in UNFOLLOW_LABELS:
+            try:
+                btn = self.driver.find_element(
+                    By.XPATH,
+                    f'//*[normalize-space(.)="{label}"]')
+                print(f'  Confirmação encontrada (XPath): '
+                      f'"{btn.text.strip()}"')
+                self._real_click(btn)
+                return True
+            except Exception:
+                continue
+
+        # Estratégia 3: Selenium find_elements em buttons
+        try:
+            buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+            for btn in buttons:
+                try:
+                    txt = btn.text.strip()
+                except Exception:
+                    continue
+                if txt in UNFOLLOW_LABELS:
+                    print(f'  Confirmação encontrada (button): "{txt}"')
+                    self._real_click(btn)
+                    return True
+        except Exception:
+            pass
+
+        # Estratégia 4: Selenium find_elements em divs
+        try:
+            divs = self.driver.find_elements(By.TAG_NAME, 'div')
+            for div in divs:
+                try:
+                    txt = div.text.strip()
+                except Exception:
+                    continue
+                if txt in UNFOLLOW_LABELS:
+                    print(f'  Confirmação encontrada (div): "{txt}"')
+                    self._real_click(div)
+                    return True
+        except Exception:
+            pass
+
+        # Diagnóstico
+        self._debug_visible_elements()
         return False
 
-    def _verify_unfollowed(self, dialog, username):
-        """Verifica se o botão do perfil mudou de 'Following' para 'Follow'."""
+    def _debug_visible_elements(self):
         try:
-            buttons = dialog.find_elements(By.TAG_NAME, 'button')
-            links_in_dialog = dialog.find_elements(By.TAG_NAME, 'a')
+            info = self.driver.execute_script("""
+                const result = [];
+                const all = document.querySelectorAll(
+                    'button, [role="button"], [role="menuitem"], div[tabindex]'
+                );
+                for (const el of all) {
+                    const t = el.textContent.trim();
+                    if (t && t.length > 0 && t.length < 80) {
+                        result.push(el.tagName + ': "' + t.substring(0, 50) + '"');
+                    }
+                }
+                return result.slice(-20);
+            """)
+            print(f'  [DEBUG] Últimos 20 elementos interativos:')
+            for line in info:
+                print(f'    {line}')
+        except Exception:
+            pass
 
-            for link in links_in_dialog:
+    # ── Verificação ───────────────────────────────────────────────────
+
+    def _verify_unfollowed_on_profile(self):
+        try:
+            buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+            for btn in buttons:
                 try:
-                    href = link.get_attribute('href')
+                    txt = btn.text.strip()
                 except Exception:
                     continue
-                if not href:
-                    continue
-                uname = href.rstrip('/').split('/')[-1]
-                if uname != username:
-                    continue
-
-                try:
-                    parent = link.find_element(
-                        By.XPATH,
-                        './ancestor::div[.//button]')
-                except Exception:
-                    continue
-
-                row_buttons = parent.find_elements(By.TAG_NAME, 'button')
-                for btn in row_buttons:
-                    try:
-                        txt = btn.text.strip()
-                    except Exception:
-                        continue
-                    if txt in FOLLOW_LABELS:
-                        return True
-                    if txt in FOLLOWING_LABELS:
-                        return False
+                if txt in FOLLOW_LABELS:
+                    return True
+                if any(l in txt for l in FOLLOWING_LABELS):
+                    return False
         except Exception:
             pass
         return True
 
+    # ── Utilitários ───────────────────────────────────────────────────
+
     def _dismiss_popup(self):
-        """Fecha qualquer popup/sheet de confirmação aberto."""
         try:
             self.driver.find_element(
                 By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
@@ -240,7 +334,6 @@ class ActionHandler:
         sleep(1)
 
     def _real_click(self, element):
-        """Clica com Selenium; se falhar, usa ActionChains como fallback."""
         try:
             element.click()
         except Exception:
