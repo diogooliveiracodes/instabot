@@ -168,11 +168,32 @@ class InstaBot:
                   f'{len(self.unfollowers)}')
 
             self.files.save_unfollowers(self.unfollowers)
+            self.files.save_followers(self.followers)
             print('\nListagem concluída com sucesso!')
         except BotStoppedException:
             raise
         except Exception as e:
             print(f'\nErro na função list_unfollowers: {e}')
+
+    # ── Fluxo 3: Verificar quem deixou de seguir ─────────────────────
+
+    def check_lost_followers(self):
+        try:
+            self.nav.open_self_profile()
+            self._sleep(2)
+
+            self.get_followers()
+            print(f'\n\nNúmero de Seguidores atual: {len(self.followers)}')
+
+            lost = self.files.detect_lost_followers(self.followers)
+            print(f'\nTotal de perdidos registrados: {len(lost)}')
+            print('\nVerificação concluída com sucesso!')
+            return lost
+        except BotStoppedException:
+            raise
+        except Exception as e:
+            print(f'\nErro na função check_lost_followers: {e}')
+            return []
 
     # ── Fluxo 2.2: Deixar de seguir não seguidores ───────────────────
 

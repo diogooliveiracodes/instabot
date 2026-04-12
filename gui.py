@@ -235,13 +235,20 @@ class MainScreen(ctk.CTkFrame):
             row=1, column=1, padx=10, pady=(5, 5), sticky="ew")
 
         self._btn_view_list = ctk.CTkButton(
-            actions_frame, text="📋  Ver lista de não seguidores",
+            actions_frame, text="📋  Ver não seguidores",
             height=40, fg_color="#7f8c8d", hover_color="#95a5a6",
             command=self._open_unfollowers_view,
         )
         self._btn_view_list.grid(
-            row=2, column=0, columnspan=2, padx=10, pady=(5, 10),
-            sticky="ew")
+            row=2, column=0, padx=10, pady=(5, 5), sticky="ew")
+
+        self._btn_lost = ctk.CTkButton(
+            actions_frame, text="👤  Quem parou de seguir",
+            height=40, fg_color="#8e44ad", hover_color="#9b59b6",
+            command=self._open_lost_followers_view,
+        )
+        self._btn_lost.grid(
+            row=2, column=1, padx=10, pady=(5, 5), sticky="ew")
 
         # ── Status ──
         self._status_label = ctk.CTkLabel(
@@ -282,6 +289,10 @@ class MainScreen(ctk.CTkFrame):
         self._btn_unfollow.configure(state="normal")
         self._btn_farm.configure(state="normal")
         self._btn_stop.configure(state="disabled")
+        has_followers = os.path.exists(
+            os.path.join(self._profile_dir, 'seguidores.json'))
+        self._btn_lost.configure(
+            state="normal" if has_followers else "disabled")
         self._status_label.configure(
             text="● Aguardando", text_color="gray")
 
@@ -302,6 +313,7 @@ class MainScreen(ctk.CTkFrame):
             "list": "Listando não seguidores...",
             "unfollow": "Removendo não seguidores...",
             "farm": "Ganhando seguidores...",
+            "lost": "Verificando quem parou de seguir...",
         }
         self._stop_event.clear()
         self._set_running_state(labels.get(task, "Executando..."))
@@ -325,6 +337,8 @@ class MainScreen(ctk.CTkFrame):
                     self._bot.unfollow_from_list()
                 elif task == "farm":
                     self._bot.farm_followers()
+                elif task == "lost":
+                    self._bot.check_lost_followers()
 
                 print("\nOperação concluída com sucesso!")
             except BotStoppedException:
@@ -365,10 +379,16 @@ class MainScreen(ctk.CTkFrame):
                 pass
             self._bot = None
 
-    # ── Ver lista ─────────────────────────────────────────────────────
+    # ── Ver listas ────────────────────────────────────────────────────
 
     def _open_unfollowers_view(self):
         UnfollowersListWindow(self.winfo_toplevel(), self._profile_dir)
+
+    def _open_lost_followers_view(self):
+        LostFollowersWindow(
+            self.winfo_toplevel(), self._profile_dir,
+            self._login, self._password, self._stop_event,
+            self._log_queue)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -441,6 +461,160 @@ class UnfollowersListWindow(ctk.CTkToplevel):
                 command=lambda u=username: webbrowser.open(
                     f"https://www.instagram.com/{u}/"),
             ).grid(row=i, column=2, padx=(0, 5), pady=2)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Janela de Quem Parou de Seguir
+# ══════════════════════════════════════════════════════════════════════
+
+class LostFollowersWindow(ctk.CTkToplevel):
+    def __init__(self, parent, profile_dir, login, password,
+                 stop_event, log_queue):
+        super().__init__(parent)
+        self.title("Quem parou de seguir")
+        self.geometry("550x650")
+        self.resizable(False, True)
+        self.transient(parent)
+        self.after(100, self.lift)
+
+        self._profile_dir = profile_dir
+        self._login = login
+        self._password = password
+        self._stop_event = stop_event
+        self._log_queue = log_queue
+        self._entries = self._load_lost()
+        self._build_ui()
+
+    def _load_lost(self):
+        path = os.path.join(self._profile_dir, 'perdidos.json')
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                return []
+        return []
+
+    def _build_ui(self):
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(15, 5))
+
+        ctk.CTkLabel(
+            header, text="Quem parou de seguir",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            header, text=f"{len(self._entries)} perfis",
+            font=ctk.CTkFont(size=14), text_color="gray",
+        ).pack(side="right")
+
+        self._btn_check = ctk.CTkButton(
+            self, text="🔄  Verificar agora",
+            height=40, fg_color="#8e44ad", hover_color="#9b59b6",
+            command=self._run_check,
+        )
+        self._btn_check.pack(fill="x", padx=20, pady=(10, 5))
+
+        self._status = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=12), text_color="gray")
+        self._status.pack(pady=(0, 5))
+
+        self._scroll_frame = ctk.CTkFrame(self)
+        self._scroll_frame.pack(fill="both", expand=True, padx=20,
+                                pady=(0, 15))
+        self._render_list()
+
+    def _render_list(self):
+        for w in self._scroll_frame.winfo_children():
+            w.destroy()
+
+        if not self._entries:
+            ctk.CTkLabel(
+                self._scroll_frame,
+                text="Nenhum seguidor perdido registrado.\n"
+                     "Clique em 'Verificar agora' para escanear.",
+                font=ctk.CTkFont(size=13), text_color="gray",
+            ).pack(expand=True, pady=30)
+            return
+
+        scroll = ctk.CTkScrollableFrame(self._scroll_frame)
+        scroll.pack(fill="both", expand=True)
+        scroll.columnconfigure(1, weight=1)
+
+        sorted_entries = sorted(
+            self._entries, key=lambda e: e.get('lost_at', ''),
+            reverse=True)
+
+        for i, entry in enumerate(sorted_entries):
+            uname = entry.get('username', '?')
+            date = entry.get('lost_at', '')
+
+            ctk.CTkLabel(
+                scroll, text=f"{i + 1}.",
+                font=ctk.CTkFont(size=12), text_color="gray",
+                width=35, anchor="e",
+            ).grid(row=i, column=0, padx=(5, 2), pady=2, sticky="e")
+
+            ctk.CTkLabel(
+                scroll, text=uname,
+                font=ctk.CTkFont(size=13), anchor="w",
+            ).grid(row=i, column=1, padx=(5, 0), pady=2, sticky="w")
+
+            ctk.CTkLabel(
+                scroll, text=date,
+                font=ctk.CTkFont(size=11), text_color="gray",
+                anchor="e",
+            ).grid(row=i, column=2, padx=(5, 2), pady=2, sticky="e")
+
+            ctk.CTkButton(
+                scroll, text="🔗", width=36, height=28,
+                font=ctk.CTkFont(size=14),
+                fg_color="transparent", hover_color="gray30",
+                command=lambda u=uname: webbrowser.open(
+                    f"https://www.instagram.com/{u}/"),
+            ).grid(row=i, column=3, padx=(0, 5), pady=2)
+
+    def _run_check(self):
+        self._btn_check.configure(state="disabled")
+        self._status.configure(
+            text="Abrindo navegador e verificando...", text_color="#2ecc71")
+
+        def worker():
+            try:
+                self._stop_event.clear()
+                logger.set_profile_dir(self._profile_dir)
+                log_path = logger.start_session()
+                print(f"Arquivo de log: {log_path}")
+
+                bot = InstaBot(
+                    login=self._login,
+                    password=self._password,
+                    profile_dir=self._profile_dir,
+                    stop_event=self._stop_event,
+                )
+                bot.start()
+                lost = bot.check_lost_followers()
+                bot.quit()
+
+                logger.stop_session()
+                self._entries = lost
+                self.after(0, self._on_check_done)
+            except BotStoppedException:
+                print("\nBot parado pelo usuário.")
+                self.after(0, self._on_check_done)
+            except Exception as e:
+                print(f"\nErro: {e}")
+                self.after(0, self._on_check_done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_check_done(self):
+        self._btn_check.configure(state="normal")
+        self._status.configure(
+            text=f"Concluído — {len(self._entries)} perdidos registrados",
+            text_color="gray")
+        self._render_list()
 
 
 # ══════════════════════════════════════════════════════════════════════
