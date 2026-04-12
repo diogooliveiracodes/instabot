@@ -10,24 +10,29 @@ from bot.exceptions import BotStoppedException
 
 
 class InstaBot:
-    def __init__(self, stop_event=None):
+    def __init__(self, login, password, profile_dir,
+                 stop_event=None):
+        self._login = login
+        self._password = password
+        self._profile_dir = profile_dir
         self._stop_event = stop_event or threading.Event()
+
         self.browser = BrowserManager()
         self.driver = self.browser.setup(config.INSTAGRAM_URL)
         self.nav = Navigator(self.driver)
         self.scraper = Scraper(self.driver, self._stop_event)
         self.actions = ActionHandler(self.driver, self._stop_event)
-        self.files = FileManager()
+        self.files = FileManager(profile_dir)
         self.followers = []
         self.following = []
         self.unfollowers = []
+        self.username = None
 
     def _check(self):
         if self._stop_event.is_set():
             raise BotStoppedException()
 
     def _sleep(self, seconds):
-        """Sleep interruptível pelo stop_event."""
         if self._stop_event.wait(seconds):
             raise BotStoppedException()
 
@@ -35,13 +40,53 @@ class InstaBot:
         self.browser.quit()
 
     def start(self):
-        self.browser.login(config.USER_LOGIN, config.USER_PASSWORD)
+        self.browser.login(self._login, self._password)
         self._sleep(5)
         self._check()
         self.browser.dismiss_popups()
 
+    def capture_username(self):
+        """Captura o username do perfil logado a partir da URL do perfil."""
+        try:
+            url = self.driver.execute_script("""
+                const labels = ['Profile', 'Perfil'];
+                for (const label of labels) {
+                    const svg = document.querySelector(
+                        'svg[aria-label="' + label + '"]');
+                    if (svg) {
+                        const link = svg.closest('a');
+                        if (link) return link.href;
+                    }
+                }
+                const allLinks = document.querySelectorAll('a[href]');
+                for (const a of allLinks) {
+                    const spans = a.querySelectorAll('span');
+                    for (const s of spans) {
+                        const t = s.textContent.trim();
+                        if (t === 'Profile' || t === 'Perfil') return a.href;
+                    }
+                }
+                return null;
+            """)
+            if url:
+                self.username = url.rstrip('/').split('/')[-1]
+                print(f'\nPerfil detectado: {self.username}')
+                return self.username
+        except Exception:
+            pass
+
+        try:
+            self.nav.open_self_profile()
+            self._sleep(2)
+            current_url = self.driver.current_url
+            self.username = current_url.rstrip('/').split('/')[-1]
+            print(f'\nPerfil detectado (via URL): {self.username}')
+            return self.username
+        except Exception as e:
+            print(f'\nErro ao capturar username: {e}')
+        return None
+
     def _restart_session(self):
-        """Fecha o navegador e abre uma nova sessão completa."""
         print('\n' + '=' * 50)
         print('REINICIANDO SESSÃO DO NAVEGADOR')
         print('=' * 50)
@@ -54,7 +99,7 @@ class InstaBot:
         self.scraper = Scraper(self.driver, self._stop_event)
         self.actions = ActionHandler(self.driver, self._stop_event)
 
-        self.browser.login(config.USER_LOGIN, config.USER_PASSWORD)
+        self.browser.login(self._login, self._password)
         self._sleep(5)
         self._check()
         self.browser.dismiss_popups()
@@ -119,7 +164,8 @@ class InstaBot:
             print(f'\n\nNúmero de Seguindo: {len(self.following)}')
 
             self.get_unfollowers()
-            print(f'\nNúmero de perfis que não seguem de volta: {len(self.unfollowers)}')
+            print(f'\nNúmero de perfis que não seguem de volta: '
+                  f'{len(self.unfollowers)}')
 
             self.files.save_unfollowers(self.unfollowers)
             print('\nListagem concluída com sucesso!')
@@ -134,7 +180,8 @@ class InstaBot:
         try:
             self.unfollowers = self.files.load_unfollowers()
             if not self.unfollowers:
-                print('\nNenhum não-seguidor na lista. Execute a opção 1 primeiro.')
+                print('\nNenhum não-seguidor na lista. Execute a opção 1 '
+                      'primeiro.')
                 return
 
             total = len(self.unfollowers)

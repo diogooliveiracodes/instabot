@@ -2,21 +2,27 @@ import os
 from datetime import datetime
 
 _log_file = None
-_logs_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'logs'
-)
+_logs_dir = None
+
+
+def set_profile_dir(profile_dir):
+    """Define a pasta onde os logs serão salvos."""
+    global _logs_dir
+    _logs_dir = profile_dir
+    if _logs_dir:
+        os.makedirs(_logs_dir, exist_ok=True)
 
 
 def start_session():
-    """Cria um novo arquivo de log com timestamp no nome.
-    Retorna o caminho do arquivo criado.
-    """
     global _log_file
     stop_session()
-    os.makedirs(_logs_dir, exist_ok=True)
+
+    target = _logs_dir or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    os.makedirs(target, exist_ok=True)
+
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    path = os.path.join(_logs_dir, f'{timestamp}.log')
+    path = os.path.join(target, f'{timestamp}.log')
     _log_file = open(path, 'w', encoding='utf-8')
     log('=' * 50)
     log('SESSÃO INICIADA')
@@ -25,7 +31,6 @@ def start_session():
 
 
 def stop_session():
-    """Fecha o arquivo de log da sessão atual."""
     global _log_file
     if _log_file:
         log('=' * 50)
@@ -39,7 +44,6 @@ def stop_session():
 
 
 def log(text):
-    """Escreve uma linha no arquivo de log com timestamp."""
     if _log_file and text:
         try:
             ts = datetime.now().strftime('%H:%M:%S')

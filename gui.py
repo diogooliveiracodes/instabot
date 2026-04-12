@@ -6,9 +6,9 @@ import threading
 import queue
 import sys
 import webbrowser
-import config
 from bot import InstaBot, BotStoppedException
 from bot import logger
+from bot import profiles
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -19,8 +19,6 @@ ctk.set_default_color_theme("blue")
 
 
 class LogRedirector:
-    """Redireciona stdout para uma fila thread-safe."""
-
     def __init__(self, log_queue, original):
         self._queue = log_queue
         self._original = original
@@ -37,14 +35,144 @@ class LogRedirector:
             self._original.flush()
 
 
-class App(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+# ══════════════════════════════════════════════════════════════════════
+#  Tela de Seleção de Perfil
+# ══════════════════════════════════════════════════════════════════════
 
-        self.title("InstaBot")
-        self.geometry("640x740")
-        self.resizable(False, False)
-        self.iconbitmap(default="")
+class LoginScreen(ctk.CTkFrame):
+    """Tela inicial para selecionar perfil salvo ou entrar com novas
+    credenciais."""
+
+    def __init__(self, master, on_profile_selected):
+        super().__init__(master)
+        self._on_profile_selected = on_profile_selected
+        self._build_ui()
+
+    def _build_ui(self):
+        ctk.CTkLabel(
+            self, text="InstaBot",
+            font=ctk.CTkFont(size=28, weight="bold"),
+        ).pack(pady=(30, 2))
+
+        ctk.CTkLabel(
+            self, text="Selecione um perfil ou faça login",
+            font=ctk.CTkFont(size=13), text_color="gray",
+        ).pack(pady=(0, 20))
+
+        # ── Perfis salvos ──
+        saved = profiles.load_profiles()
+        if saved:
+            ctk.CTkLabel(
+                self, text="Perfis salvos",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                anchor="w",
+            ).pack(anchor="w", padx=40, pady=(0, 5))
+
+            profiles_frame = ctk.CTkFrame(self)
+            profiles_frame.pack(fill="x", padx=30, pady=(0, 15))
+
+            for p in saved:
+                row = ctk.CTkFrame(profiles_frame, fg_color="transparent")
+                row.pack(fill="x", padx=10, pady=4)
+
+                ctk.CTkButton(
+                    row,
+                    text=f"@{p['username']}",
+                    height=40,
+                    anchor="w",
+                    font=ctk.CTkFont(size=14),
+                    command=lambda pr=p: self._select_saved(pr),
+                ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+                ctk.CTkButton(
+                    row, text="✕", width=40, height=40,
+                    fg_color="#c0392b", hover_color="#e74c3c",
+                    command=lambda pr=p: self._delete_profile(pr),
+                ).pack(side="right")
+
+            separator = ctk.CTkFrame(self, height=2, fg_color="gray30")
+            separator.pack(fill="x", padx=40, pady=(0, 15))
+
+        # ── Novo login ──
+        ctk.CTkLabel(
+            self, text="Novo login",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=40, pady=(0, 5))
+
+        login_frame = ctk.CTkFrame(self)
+        login_frame.pack(fill="x", padx=30, pady=(0, 10))
+        login_frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(login_frame, text="Login", anchor="w").grid(
+            row=0, column=0, padx=(15, 10), pady=(15, 5), sticky="w")
+        self._login_entry = ctk.CTkEntry(
+            login_frame, placeholder_text="E-mail ou usuário")
+        self._login_entry.grid(
+            row=0, column=1, padx=(0, 15), pady=(15, 5), sticky="ew")
+
+        ctk.CTkLabel(login_frame, text="Senha", anchor="w").grid(
+            row=1, column=0, padx=(15, 10), pady=(5, 15), sticky="w")
+        self._password_entry = ctk.CTkEntry(
+            login_frame, placeholder_text="Senha", show="•")
+        self._password_entry.grid(
+            row=1, column=1, padx=(0, 15), pady=(5, 15), sticky="ew")
+
+        self._btn_login = ctk.CTkButton(
+            self, text="Entrar",
+            height=45, font=ctk.CTkFont(size=15, weight="bold"),
+            command=self._new_login,
+        )
+        self._btn_login.pack(padx=30, pady=(5, 30), fill="x")
+
+        self._status = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c")
+        self._status.pack(pady=(0, 10))
+
+    def _select_saved(self, profile):
+        self._on_profile_selected(
+            profile['login'], profile['password'], profile['username'])
+
+    def _delete_profile(self, profile):
+        profiles.remove_profile(profile['username'])
+        self._refresh()
+
+    def _new_login(self):
+        login = self._login_entry.get().strip()
+        password = self._password_entry.get().strip()
+        if not login or not password:
+            self._status.configure(
+                text="Preencha login e senha.", text_color="#e74c3c")
+            return
+
+        self._status.configure(
+            text="Fazendo login e detectando perfil...",
+            text_color="#2ecc71")
+        self._btn_login.configure(state="disabled")
+
+        self._on_profile_selected(login, password, None)
+
+    def _refresh(self):
+        for w in self.winfo_children():
+            w.destroy()
+        self._build_ui()
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Tela Principal
+# ══════════════════════════════════════════════════════════════════════
+
+class MainScreen(ctk.CTkFrame):
+    """Tela principal com ações do bot, log e status."""
+
+    def __init__(self, master, login, password, username, profile_dir,
+                 on_logout):
+        super().__init__(master)
+        self._login = login
+        self._password = password
+        self._username = username
+        self._profile_dir = profile_dir
+        self._on_logout = on_logout
 
         self._bot = None
         self._stop_event = threading.Event()
@@ -52,78 +180,59 @@ class App(ctk.CTk):
         self._bot_thread = None
 
         self._build_ui()
-        self._redirect_stdout()
         self._poll_log()
         self._set_idle_state()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    # ── UI ────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        title = ctk.CTkLabel(
-            self, text="InstaBot",
-            font=ctk.CTkFont(size=28, weight="bold"),
-        )
-        title.pack(pady=(20, 2))
+        # ── Cabeçalho ──
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=30, pady=(15, 5))
 
-        subtitle = ctk.CTkLabel(
-            self, text="Automação para Instagram",
-            font=ctk.CTkFont(size=13), text_color="gray",
-        )
-        subtitle.pack(pady=(0, 15))
+        ctk.CTkLabel(
+            header, text=f"@{self._username}",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        ).pack(side="left")
 
-        # ── Credenciais ──
-        cred_frame = ctk.CTkFrame(self)
-        cred_frame.pack(fill="x", padx=30, pady=(0, 10))
-        cred_frame.columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(cred_frame, text="Login", anchor="w").grid(
-            row=0, column=0, padx=(15, 10), pady=(15, 5), sticky="w")
-        self._login_entry = ctk.CTkEntry(
-            cred_frame, placeholder_text="E-mail ou usuário")
-        self._login_entry.grid(
-            row=0, column=1, padx=(0, 15), pady=(15, 5), sticky="ew")
-        if config.USER_LOGIN:
-            self._login_entry.insert(0, config.USER_LOGIN)
-
-        ctk.CTkLabel(cred_frame, text="Senha", anchor="w").grid(
-            row=1, column=0, padx=(15, 10), pady=(5, 15), sticky="w")
-        self._password_entry = ctk.CTkEntry(
-            cred_frame, placeholder_text="Senha", show="•")
-        self._password_entry.grid(
-            row=1, column=1, padx=(0, 15), pady=(5, 15), sticky="ew")
-        if config.USER_PASSWORD:
-            self._password_entry.insert(0, config.USER_PASSWORD)
+        ctk.CTkButton(
+            header, text="Trocar perfil", width=110, height=32,
+            fg_color="gray30", hover_color="gray40",
+            font=ctk.CTkFont(size=12),
+            command=self._on_logout,
+        ).pack(side="right")
 
         # ── Ações ──
         actions_frame = ctk.CTkFrame(self)
-        actions_frame.pack(fill="x", padx=30, pady=(0, 10))
+        actions_frame.pack(fill="x", padx=30, pady=(10, 5))
         actions_frame.columnconfigure((0, 1), weight=1)
 
         self._btn_list = ctk.CTkButton(
             actions_frame, text="Listar não seguidores",
             height=45, command=lambda: self._start_task("list"),
         )
-        self._btn_list.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
+        self._btn_list.grid(
+            row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
 
         self._btn_unfollow = ctk.CTkButton(
             actions_frame, text="Deixar de seguir",
             height=45, command=lambda: self._start_task("unfollow"),
         )
-        self._btn_unfollow.grid(row=0, column=1, padx=10, pady=(10, 5), sticky="ew")
+        self._btn_unfollow.grid(
+            row=0, column=1, padx=10, pady=(10, 5), sticky="ew")
 
         self._btn_farm = ctk.CTkButton(
             actions_frame, text="Ganhar seguidores",
             height=45, command=lambda: self._start_task("farm"),
         )
-        self._btn_farm.grid(row=1, column=0, padx=10, pady=(5, 10), sticky="ew")
+        self._btn_farm.grid(
+            row=1, column=0, padx=10, pady=(5, 5), sticky="ew")
 
         self._btn_stop = ctk.CTkButton(
             actions_frame, text="⏹  Parar Bot",
             height=45, fg_color="#c0392b", hover_color="#e74c3c",
             command=self._stop_bot,
         )
-        self._btn_stop.grid(row=1, column=1, padx=10, pady=(5, 5), sticky="ew")
+        self._btn_stop.grid(
+            row=1, column=1, padx=10, pady=(5, 5), sticky="ew")
 
         self._btn_view_list = ctk.CTkButton(
             actions_frame, text="📋  Ver lista de não seguidores",
@@ -131,32 +240,27 @@ class App(ctk.CTk):
             command=self._open_unfollowers_view,
         )
         self._btn_view_list.grid(
-            row=2, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="ew")
+            row=2, column=0, columnspan=2, padx=10, pady=(5, 10),
+            sticky="ew")
 
         # ── Status ──
         self._status_label = ctk.CTkLabel(
             self, text="● Aguardando",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="gray",
+            font=ctk.CTkFont(size=14, weight="bold"), text_color="gray",
         )
         self._status_label.pack(pady=(5, 5))
 
         # ── Log ──
-        log_header = ctk.CTkLabel(
-            self, text="Log", anchor="w", font=ctk.CTkFont(size=13))
-        log_header.pack(anchor="w", padx=30, pady=(5, 3))
+        ctk.CTkLabel(
+            self, text="Log", anchor="w", font=ctk.CTkFont(size=13),
+        ).pack(anchor="w", padx=30, pady=(5, 3))
 
         self._log_textbox = ctk.CTkTextbox(
-            self, height=300, state="disabled",
+            self, height=280, state="disabled",
             font=ctk.CTkFont(family="Consolas", size=12),
         )
-        self._log_textbox.pack(fill="both", expand=True, padx=30, pady=(0, 20))
-
-    # ── Stdout → GUI ─────────────────────────────────────────────────
-
-    def _redirect_stdout(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = LogRedirector(self._log_queue, sys.__stdout__)
+        self._log_textbox.pack(
+            fill="both", expand=True, padx=30, pady=(0, 15))
 
     def _poll_log(self):
         try:
@@ -170,50 +274,30 @@ class App(ctk.CTk):
             pass
         self.after(100, self._poll_log)
 
-    # ── Controle de suspensão do sistema ─────────────────────────────
-
-    @staticmethod
-    def _prevent_sleep():
-        ctypes.windll.kernel32.SetThreadExecutionState(
-            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
-        )
-
-    @staticmethod
-    def _allow_sleep():
-        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
-
-    # ── Estados da interface ─────────────────────────────────────────
+    # ── Estados ───────────────────────────────────────────────────────
 
     def _set_idle_state(self):
-        self._allow_sleep()
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
         self._btn_list.configure(state="normal")
         self._btn_unfollow.configure(state="normal")
         self._btn_farm.configure(state="normal")
         self._btn_stop.configure(state="disabled")
-        self._login_entry.configure(state="normal")
-        self._password_entry.configure(state="normal")
-        self._status_label.configure(text="● Aguardando", text_color="gray")
+        self._status_label.configure(
+            text="● Aguardando", text_color="gray")
 
     def _set_running_state(self, label):
-        self._prevent_sleep()
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
         self._btn_list.configure(state="disabled")
         self._btn_unfollow.configure(state="disabled")
         self._btn_farm.configure(state="disabled")
         self._btn_stop.configure(state="normal")
-        self._login_entry.configure(state="disabled")
-        self._password_entry.configure(state="disabled")
-        self._status_label.configure(text=f"● {label}", text_color="#2ecc71")
+        self._status_label.configure(
+            text=f"● {label}", text_color="#2ecc71")
 
-    # ── Controle do bot ──────────────────────────────────────────────
+    # ── Controle do bot ───────────────────────────────────────────────
 
     def _start_task(self, task):
-        login = self._login_entry.get().strip()
-        password = self._password_entry.get().strip()
-
-        if not login or not password:
-            self._log_queue.put("⚠ Preencha login e senha antes de iniciar.")
-            return
-
         labels = {
             "list": "Listando não seguidores...",
             "unfollow": "Removendo não seguidores...",
@@ -222,14 +306,17 @@ class App(ctk.CTk):
         self._stop_event.clear()
         self._set_running_state(labels.get(task, "Executando..."))
 
-        config.USER_LOGIN = login
-        config.USER_PASSWORD = password
-
         def worker():
+            logger.set_profile_dir(self._profile_dir)
             log_path = logger.start_session()
             print(f"Arquivo de log: {log_path}")
             try:
-                self._bot = InstaBot(stop_event=self._stop_event)
+                self._bot = InstaBot(
+                    login=self._login,
+                    password=self._password,
+                    profile_dir=self._profile_dir,
+                    stop_event=self._stop_event,
+                )
                 self._bot.start()
 
                 if task == "list":
@@ -256,9 +343,10 @@ class App(ctk.CTk):
         self._bot_thread.start()
 
     def _stop_bot(self):
-        print("\nParando o bot...")
+        self._log_queue.put("Parando o bot...")
         self._stop_event.set()
-        self._status_label.configure(text="● Parando...", text_color="#e74c3c")
+        self._status_label.configure(
+            text="● Parando...", text_color="#e74c3c")
         self._btn_stop.configure(state="disabled")
 
         def force_quit():
@@ -277,25 +365,18 @@ class App(ctk.CTk):
                 pass
             self._bot = None
 
-    # ── Ver lista de não seguidores ──────────────────────────────────
+    # ── Ver lista ─────────────────────────────────────────────────────
 
     def _open_unfollowers_view(self):
-        UnfollowersListWindow(self)
+        UnfollowersListWindow(self.winfo_toplevel(), self._profile_dir)
 
-    # ── Fechar janela ────────────────────────────────────────────────
 
-    def _on_close(self):
-        self._stop_event.set()
-        self._cleanup_bot()
-        self._allow_sleep()
-        sys.stdout = self._original_stdout
-        self.destroy()
-
+# ══════════════════════════════════════════════════════════════════════
+#  Janela de Lista de Não Seguidores
+# ══════════════════════════════════════════════════════════════════════
 
 class UnfollowersListWindow(ctk.CTkToplevel):
-    """Janela que exibe a lista de não-seguidores com links para o perfil."""
-
-    def __init__(self, parent):
+    def __init__(self, parent, profile_dir):
         super().__init__(parent)
         self.title("Não Seguidores")
         self.geometry("500x600")
@@ -303,21 +384,15 @@ class UnfollowersListWindow(ctk.CTkToplevel):
         self.transient(parent)
         self.after(100, self.lift)
 
+        self._profile_dir = profile_dir
         self._users = self._load_list()
         self._build_ui()
 
     def _load_list(self):
-        logs_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), 'logs')
-        json_path = os.path.join(logs_dir, 'nao-seguidores.json')
-        txt_path = os.path.join(logs_dir, 'nao-seguidores.txt')
-
-        if os.path.exists(json_path):
-            with open(json_path, 'r', encoding='utf-8') as f:
+        path = os.path.join(self._profile_dir, 'nao-seguidores.json')
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        if os.path.exists(txt_path):
-            with open(txt_path, 'r', encoding='utf-8') as f:
-                return [line.strip() for line in f if line.strip()]
         return []
 
     def _build_ui(self):
@@ -330,10 +405,8 @@ class UnfollowersListWindow(ctk.CTkToplevel):
         ).pack(side="left")
 
         ctk.CTkLabel(
-            header,
-            text=f"{len(self._users)} perfis",
-            font=ctk.CTkFont(size=14),
-            text_color="gray",
+            header, text=f"{len(self._users)} perfis",
+            font=ctk.CTkFont(size=14), text_color="gray",
         ).pack(side="right")
 
         if not self._users:
@@ -341,45 +414,151 @@ class UnfollowersListWindow(ctk.CTkToplevel):
                 self,
                 text="Nenhum não-seguidor encontrado.\n"
                      "Execute 'Listar não seguidores' primeiro.",
-                font=ctk.CTkFont(size=13),
-                text_color="gray",
+                font=ctk.CTkFont(size=13), text_color="gray",
             ).pack(expand=True)
             return
 
         scroll = ctk.CTkScrollableFrame(self)
         scroll.pack(fill="both", expand=True, padx=20, pady=(5, 15))
-        scroll.columnconfigure(0, weight=0)
         scroll.columnconfigure(1, weight=1)
-        scroll.columnconfigure(2, weight=0)
 
         for i, username in enumerate(self._users):
-            bg = ("gray20", "gray17")[i % 2]
-
-            num_label = ctk.CTkLabel(
+            ctk.CTkLabel(
                 scroll, text=f"{i + 1}.",
-                font=ctk.CTkFont(size=12),
-                text_color="gray",
+                font=ctk.CTkFont(size=12), text_color="gray",
                 width=40, anchor="e",
-            )
-            num_label.grid(row=i, column=0, padx=(5, 2), pady=2, sticky="e")
+            ).grid(row=i, column=0, padx=(5, 2), pady=2, sticky="e")
 
-            name_label = ctk.CTkLabel(
+            ctk.CTkLabel(
                 scroll, text=username,
-                font=ctk.CTkFont(size=13),
-                anchor="w",
-            )
-            name_label.grid(row=i, column=1, padx=(5, 5), pady=2, sticky="w")
+                font=ctk.CTkFont(size=13), anchor="w",
+            ).grid(row=i, column=1, padx=(5, 5), pady=2, sticky="w")
 
-            link_btn = ctk.CTkButton(
-                scroll, text="🔗",
-                width=36, height=28,
+            ctk.CTkButton(
+                scroll, text="🔗", width=36, height=28,
                 font=ctk.CTkFont(size=14),
-                fg_color="transparent",
-                hover_color="gray30",
+                fg_color="transparent", hover_color="gray30",
                 command=lambda u=username: webbrowser.open(
                     f"https://www.instagram.com/{u}/"),
-            )
-            link_btn.grid(row=i, column=2, padx=(0, 5), pady=2)
+            ).grid(row=i, column=2, padx=(0, 5), pady=2)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  App Principal (gerencia telas)
+# ══════════════════════════════════════════════════════════════════════
+
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("InstaBot")
+        self.geometry("640x740")
+        self.resizable(False, False)
+        self.iconbitmap(default="")
+
+        self._log_queue = queue.Queue()
+        self._original_stdout = sys.stdout
+        sys.stdout = LogRedirector(self._log_queue, sys.__stdout__)
+
+        self._current_screen = None
+        self._show_login()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _show_login(self):
+        if self._current_screen:
+            self._current_screen.destroy()
+        self._current_screen = LoginScreen(
+            self, on_profile_selected=self._on_profile_selected)
+        self._current_screen.pack(fill="both", expand=True)
+
+    def _on_profile_selected(self, login, password, username):
+        if username:
+            profile_dir = profiles.get_profile_dir(username)
+            self._show_main(login, password, username, profile_dir)
+        else:
+            self._detect_and_show(login, password)
+
+    def _detect_and_show(self, login, password):
+        """Faz login no Instagram para capturar o username e depois mostra
+        a tela principal."""
+        def worker():
+            try:
+                from bot.browser import BrowserManager
+                from bot.navigation import Navigator
+                import config
+
+                print("Fazendo login para detectar o perfil...")
+                bm = BrowserManager()
+                driver = bm.setup(config.INSTAGRAM_URL)
+                bm.login(login, password)
+                import time
+                time.sleep(5)
+                bm.dismiss_popups()
+                time.sleep(2)
+
+                nav = Navigator(driver)
+                url = driver.execute_script("""
+                    const labels = ['Profile', 'Perfil'];
+                    for (const l of labels) {
+                        const svg = document.querySelector(
+                            'svg[aria-label="' + l + '"]');
+                        if (svg) {
+                            const a = svg.closest('a');
+                            if (a) return a.href;
+                        }
+                    }
+                    const all = document.querySelectorAll('a[href]');
+                    for (const a of all) {
+                        const spans = a.querySelectorAll('span');
+                        for (const s of spans) {
+                            const t = s.textContent.trim();
+                            if (t === 'Profile' || t === 'Perfil')
+                                return a.href;
+                        }
+                    }
+                    return null;
+                """)
+
+                detected = None
+                if url:
+                    detected = url.rstrip('/').split('/')[-1]
+
+                if not detected:
+                    nav.open_self_profile()
+                    time.sleep(2)
+                    detected = driver.current_url.rstrip('/').split('/')[-1]
+
+                bm.quit()
+
+                if detected:
+                    print(f"Perfil detectado: @{detected}")
+                    profiles.save_profile(login, password, detected)
+                    profile_dir = profiles.get_profile_dir(detected)
+                    self.after(0, lambda: self._show_main(
+                        login, password, detected, profile_dir))
+                else:
+                    print("Não foi possível detectar o perfil.")
+                    self.after(0, self._show_login)
+
+            except Exception as e:
+                print(f"Erro na detecção: {e}")
+                self.after(0, self._show_login)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_main(self, login, password, username, profile_dir):
+        if self._current_screen:
+            self._current_screen.destroy()
+        self._current_screen = MainScreen(
+            self, login, password, username, profile_dir,
+            on_logout=self._show_login)
+        self._current_screen.pack(fill="both", expand=True)
+
+    def _on_close(self):
+        if isinstance(self._current_screen, MainScreen):
+            self._current_screen._cleanup_bot()
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        sys.stdout = self._original_stdout
+        self.destroy()
 
 
 def run():
